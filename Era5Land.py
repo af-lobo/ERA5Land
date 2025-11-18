@@ -105,6 +105,13 @@ def build_gee_code(
             "value_expr": "ee.Number(v.get('potential_evaporation_hourly')).multiply(1000)",
             "title_suffix": "Evapotranspiração potencial horária (mm)",
         },
+        # --- Velocidade do Vento a 10m ---
+        "Velocidade do vento 10 m (m/s)": {
+            "bands": ["u_component_of_wind_10m", "v_component_of_wind_10m"],
+            "value_prop": "wind10m_ms",
+            "special": "wind10m",
+            "title_suffix": "Velocidade do vento a 10 m (m/s)"
+        },
     }
 
     if event_label not in event_config:
