@@ -41,7 +41,7 @@ def build_gee_code(
     """
 
     # Configuração das variáveis/“eventos”
-       event_config = {
+    event_config = {
         # --- Precipitação ---
         "Precipitação total (mm/h)": {
             # acumulada desde 00h; continua a usar total_precipitation e converte para mm
@@ -105,7 +105,7 @@ def build_gee_code(
             "value_expr": "ee.Number(v.get('potential_evaporation_hourly')).multiply(1000)",
             "title_suffix": "Evapotranspiração potencial horária (mm)",
         },
-       }
+    }
 
     if event_label not in event_config:
         return "// ERRO: evento não reconhecido."
