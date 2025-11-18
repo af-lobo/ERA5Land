@@ -296,3 +296,5 @@ else:
 Se a janela **não** passar pelo fim do ano (ex.: 1 Jan–31 Mar), o código faz um único filtro:
 ```js
 var seasonal = base.filter(ee.Filter.dayOfYear(startDoy, endDoy));
+"""
+    
