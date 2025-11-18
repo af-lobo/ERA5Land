@@ -182,4 +182,117 @@ st.set_page_config(
     layout="wide",
 )
 
-st.
+st.title("Gerador de Código para Google Earth Engine (ERA5-Land)")
+st.caption("Define uma janela sazonal (pode passar o fim do ano) e obtém o código JS para o GEE.")
+
+page = st.sidebar.radio("Navegação", ["Gerar código GEE", "Instruções"])
+
+# ---------------------------
+# Página: Gerar código
+# ---------------------------
+if page == "Gerar código GEE":
+    st.header("Configuração da análise sazonal")
+
+    col1, col2 = st.columns(2)
+
+    # ---- Coluna 1: variável e anos ----
+    with col1:
+        event_label = st.selectbox(
+            "Tipo de evento / variável",
+            [
+                "Precipitação total (mm/h)",
+                "Temperatura 2 m (°C)",
+            ],
+        )
+
+        st.markdown("#### Intervalo de anos (histórico)")
+        start_year = st.number_input("Ano inicial", value=1995, step=1)
+        end_year = st.number_input("Ano final", value=2024, step=1)
+
+    # ---- Coluna 2: janela sazonal e localizações ----
+    with col2:
+        st.markdown("#### Janela sazonal (aplicada a todos os anos)")
+
+        months = {
+            1: "Jan",
+            2: "Fev",
+            3: "Mar",
+            4: "Abr",
+            5: "Mai",
+            6: "Jun",
+            7: "Jul",
+            8: "Ago",
+            9: "Set",
+            10: "Out",
+            11: "Nov",
+            12: "Dez",
+        }
+
+        c1, c2 = st.columns(2)
+        with c1:
+            start_month = st.selectbox(
+                "Mês início", list(months.keys()), format_func=lambda m: months[m], index=0
+            )
+            start_day = st.number_input("Dia início", min_value=1, max_value=31, value=1)
+        with c2:
+            end_month = st.selectbox(
+                "Mês fim", list(months.keys()), format_func=lambda m: months[m], index=0
+            )
+            end_day = st.number_input("Dia fim", min_value=1, max_value=31, value=31)
+
+    st.markdown("#### Localizações (centróides)")
+    st.write(
+        "Introduz uma localização por linha no formato:\n\n"
+        "`Nome, lon, lat`\n\n"
+        "Exemplos:\n"
+        "`Evora, -7.909, 38.571`\n"
+        "`Santarem, -8.683, 39.236`"
+    )
+
+    default_locs = "Evora, -7.909, 38.571\nSantarem, -8.683, 39.236"
+    locations_text = st.text_area("Lista de localizações", value=default_locs, height=150)
+
+    st.markdown("---")
+
+    if st.button("Gerar código JavaScript para o GEE"):
+        if start_year > end_year:
+            st.error("O ano inicial deve ser menor ou igual ao ano final.")
+        else:
+            gee_code = build_gee_code(
+                event_label=event_label,
+                start_year=int(start_year),
+                end_year=int(end_year),
+                start_month=int(start_month),
+                start_day=int(start_day),
+                end_month=int(end_month),
+                end_day=int(end_day),
+                locations_text=locations_text,
+            )
+
+            st.subheader("Código JavaScript para colar no Code Editor do Google Earth Engine")
+            st.code(gee_code, language="javascript")
+
+            st.download_button(
+                "📥 Descarregar código como ficheiro .js",
+                gee_code,
+                file_name="era5land_sazonal.js",
+                mime="text/javascript",
+            )
+
+# ---------------------------
+# Página: Instruções
+# ---------------------------
+else:
+    st.header("Instruções – Janela sazonal no ERA5-Land via GEE")
+
+    st.markdown(
+        """
+### 1. Conceito de janela sazonal
+
+- A *janela temporal* é um **período dentro do ano** (ex.: 1–31 Janeiro, ou 15 Novembro–15 Fevereiro).
+- Esse período é aplicado a **todos os anos** entre o ano inicial e o ano final.
+- O código gerado usa filtros `calendarRange` (anos) e `dayOfYear` (dia do ano).
+
+Se a janela **não** passar pelo fim do ano (ex.: 1 Jan–31 Mar), o código faz um único filtro:
+```js
+var seasonal = base.filter(ee.Filter.dayOfYear(startDoy, endDoy));
