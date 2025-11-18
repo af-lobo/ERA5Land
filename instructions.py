@@ -2,8 +2,6 @@ import streamlit as st
 
 def show_instructions():
     st.title("Instruções – ERA5-Land / ERA5 via Google Earth Engine")
-    ...
-
 Cada linha gera:
 
 - um `ee.Geometry.Point([lon, lat])`
