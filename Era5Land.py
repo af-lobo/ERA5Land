@@ -285,8 +285,8 @@ if page == "Gerar código GEE":
 else:
     st.header("Instruções – Janela sazonal no ERA5-Land via GEE")
 
-    st.markdown(
-        """
+st.markdown(
+    r"""
 ### 1. Conceito de janela sazonal
 
 - A *janela temporal* é um **período dentro do ano** (ex.: 1–31 Janeiro, ou 15 Novembro–15 Fevereiro).
@@ -294,7 +294,23 @@ else:
 - O código gerado usa filtros `calendarRange` (anos) e `dayOfYear` (dia do ano).
 
 Se a janela **não** passar pelo fim do ano (ex.: 1 Jan–31 Mar), o código faz um único filtro:
-```js
-var seasonal = base.filter(ee.Filter.dayOfYear(startDoy, endDoy));
 """
-    
+)
+
+st.code(
+    "var seasonal = base.filter(ee.Filter.dayOfYear(startDoy, endDoy));",
+    language="javascript"
+)
+
+st.markdown(
+    r"""
+Se a janela **passar** pelo fim do ano (ex.: 15 Nov–15 Fev), são criados dois intervalos unidos:
+"""
+)
+
+st.code(
+    "var part1 = base.filter(ee.Filter.dayOfYear(startDoy, 366));\n"
+    "var part2 = base.filter(ee.Filter.dayOfYear(1, endDoy));\n"
+    "var seasonal = part1.merge(part2);",
+    language="javascript"
+)
