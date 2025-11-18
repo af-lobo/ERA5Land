@@ -2,14 +2,94 @@ import streamlit as st
 
 def show_instructions():
     st.title("Instruções – ERA5-Land / ERA5 via Google Earth Engine")
-Cada linha gera:
+    st.markdown(
+        r"""
 
-- um `ee.Geometry.Point([lon, lat])`
-- uma série temporal (`FeatureCollection`)
-- gráfico no Code Editor
-- exportação CSV via `Export.table.toDrive`
+        Esta página explica como funciona a aplicação, como usar o Google Earth Engine (GEE)
+e o racional de cada variável incluída. A ideia é poderes revisitar este guia mesmo meses depois
+e perceber rapidamente todo o fluxo de trabalho.
+"""
+    )
+
+    # ---------------------------------------------------------------------
+    # 1. COMO FUNCIONA A APP
+    # ---------------------------------------------------------------------
+    with st.expander("1️⃣ Como funciona a app (janela sazonal, anos, centróides)", expanded=True):
+
+        st.markdown(
+            r"""
+## 1.1. Janela sazonal
+
+A *janela sazonal* é um **período dentro do ano**, por exemplo:
+
+- 1–31 Janeiro  
+- 15 Novembro–15 Fevereiro  
+- 5 Setembro–10 Outubro  
+
+Este período é aplicado a **todos os anos do intervalo histórico** que selecionares na app
+(por exemplo: 1995–2024).
+
+A app converte mês/dia para **dia do ano** (`doy`) e depois aplica filtros no GEE.
+
+---
+
+## 1.2. Tipos de janela sazonal
+
+### ✔️ Janela dentro do ano  
+(ex.: 1 Janeiro → 31 Março, ou 5 Fevereiro → 20 Abril)
+
+Código gerado:
+
 """
         )
+
+        st.code(
+            "var seasonal = base.filter(ee.Filter.dayOfYear(startDoy, endDoy));",
+            language="javascript",
+        )
+
+        st.markdown(
+            r"""
+---
+
+### ✔️ Janela que passa o fim do ano  
+(ex.: 15 Novembro → 15 Fevereiro)
+
+Código gerado:
+
+"""
+        )
+
+        st.code(
+            "var part1 = base.filter(ee.Filter.dayOfYear(startDoy, 366));\n"
+            "var part2 = base.filter(ee.Filter.dayOfYear(1, endDoy));\n"
+            "var seasonal = part1.merge(part2);",
+            language="javascript",
+        )
+
+        st.markdown(
+            r"""
+---
+
+## 1.3. Variáveis da app
+
+Ao escolheres a variável (precipitação, temperatura, etc.) a app seleciona internamente:
+
+- banda(s) necessárias,
+- função de conversão (p.ex. Kelvin → °C),
+- nome da coluna final para o CSV,
+- gráfico a apresentar no GEE.
+
+---
+
+## 1.4. Localizações (centróides)
+
+As localizações devem ser introduzidas com o formato:
+
+Nome, lon, lat
+Exemplo:
+Evora, -7.909, 38.571
+Santarem, -8.683, 39.236
 
     # ---------------------------------------------------------------------
     # 2. GEE – PASSO A PASSO
