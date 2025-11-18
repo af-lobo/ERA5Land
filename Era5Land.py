@@ -105,7 +105,7 @@ def build_gee_code(
             "value_expr": "ee.Number(v.get('potential_evaporation_hourly')).multiply(1000)",
             "title_suffix": "Evapotranspiração potencial horária (mm)",
         },
-    }
+        }
 
     if event_label not in event_config:
         return "// ERRO: evento não reconhecido."
@@ -369,5 +369,3 @@ st.code(
     "var part1 = base.filter(ee.Filter.dayOfYear(startDoy, 366));\n"
     "var part2 = base.filter(ee.Filter.dayOfYear(1, endDoy));\n"
     "var seasonal = part1.merge(part2);",
-    language="javascript"
-)
