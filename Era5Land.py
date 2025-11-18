@@ -369,3 +369,4 @@ st.code(
     "var part1 = base.filter(ee.Filter.dayOfYear(startDoy, 366));\n"
     "var part2 = base.filter(ee.Filter.dayOfYear(1, endDoy));\n"
     "var seasonal = part1.merge(part2);",
+)
