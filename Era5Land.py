@@ -252,7 +252,13 @@ if page == "Gerar código GEE":
             "Tipo de evento / variável",
             [
                 "Precipitação total (mm/h)",
-                "Temperatura 2 m (°C)",
+        "Precipitação total horária (mm)",
+        "Temperatura 2 m (°C)",
+        "Ponto de orvalho 2 m (°C)",
+        "Humidade do solo camada 1 (0–7 cm)",
+        "Radiação solar global horária (W/m²)",
+        "Runoff total horário (mm)",
+        "Evapotranspiração potencial horária (mm)",
             ],
         )
 
