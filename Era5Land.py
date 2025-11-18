@@ -41,18 +41,69 @@ def build_gee_code(
     """
 
     # Configuração das variáveis/“eventos”
-    event_config = {
+       event_config = {
+        # --- Precipitação ---
         "Precipitação total (mm/h)": {
+            # acumulada desde 00h; continua a usar total_precipitation e converte para mm
             "band": "total_precipitation",
             "value_prop": "precip_mm",
             "value_expr": "ee.Number(v.get('total_precipitation')).multiply(1000)",
             "title_suffix": "Precipitação total (mm/h)",
         },
+        "Precipitação total horária (mm)": {
+            # já vem desagregada hora a hora em m → converter para mm
+            "band": "total_precipitation_hourly",
+            "value_prop": "precip_h_mm",
+            "value_expr": "ee.Number(v.get('total_precipitation_hourly')).multiply(1000)",
+            "title_suffix": "Precipitação total horária (mm)",
+        },
+
+        # --- Temperaturas ---
         "Temperatura 2 m (°C)": {
             "band": "temperature_2m",
             "value_prop": "temp_C",
             "value_expr": "ee.Number(v.get('temperature_2m')).subtract(273.15)",
             "title_suffix": "Temperatura 2 m (°C)",
+        },
+        "Ponto de orvalho 2 m (°C)": {
+            "band": "dewpoint_temperature_2m",
+            "value_prop": "dewpoint_C",
+            "value_expr": "ee.Number(v.get('dewpoint_temperature_2m')).subtract(273.15)",
+            "title_suffix": "Ponto de orvalho 2 m (°C)",
+        },
+
+        # --- Solo ---
+        "Humidade do solo camada 1 (0–7 cm)": {
+            "band": "volumetric_soil_water_layer_1",
+            "value_prop": "soilw1",
+            # já vem como fração volumétrica (0–1)
+            "value_expr": "ee.Number(v.get('volumetric_soil_water_layer_1'))",
+            "title_suffix": "Humidade do solo camada 1",
+        },
+
+        # --- Radiação ---
+        "Radiação solar global horária (W/m²)": {
+            # J/m2 acumulados na hora → dividir por 3600 para W/m2 médios
+            "band": "surface_solar_radiation_downwards_hourly",
+            "value_prop": "swdown_Wm2",
+            "value_expr": "ee.Number(v.get('surface_solar_radiation_downwards_hourly')).divide(3600)",
+            "title_suffix": "Radiação solar global horária (W/m²)",
+        },
+
+        # --- Runoff / escoamento ---
+        "Runoff total horário (mm)": {
+            "band": "runoff_hourly",
+            "value_prop": "runoff_mm",
+            "value_expr": "ee.Number(v.get('runoff_hourly')).multiply(1000)",
+            "title_suffix": "Runoff total horário (mm)",
+        },
+
+        # --- Evapotranspiração ---
+        "Evapotranspiração potencial horária (mm)": {
+            "band": "potential_evaporation_hourly",
+            "value_prop": "pev_mm",
+            "value_expr": "ee.Number(v.get('potential_evaporation_hourly')).multiply(1000)",
+            "title_suffix": "Evapotranspiração potencial horária (mm)",
         },
     }
 
