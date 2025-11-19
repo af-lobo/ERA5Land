@@ -1,0 +1,93 @@
+# app_gee_test.py
+import streamlit as st
+import pandas as pd
+from datetime import date, timedelta
+
+from gee_client import get_era5_land_daily_point
+
+
+st.set_page_config(
+    page_title="Teste ERA5 via GEE",
+    layout="wide",
+)
+
+st.title("Teste de consulta ERA5-Land via Google Earth Engine")
+st.write(
+    """
+    Esta app de teste vai buscar uma série diária ERA5-Land (precipitação, T2m, vento 10m) 
+    para um ponto, usando directamente o GEE (sem CDS).
+    """
+)
+
+# -----------------------------
+# Inputs
+# -----------------------------
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    lat = st.number_input("Latitude", value=-31.5, format="%.4f")
+    lon = st.number_input("Longitude", value=-71.2, format="%.4f")
+
+with col2:
+    default_end = date.today()
+    default_start = default_end - timedelta(days=7)
+    start_date = st.date_input("Data início", value=default_start)
+    end_date = st.date_input("Data fim", value=default_end)
+
+with col3:
+    st.write(" ")
+    st.write(" ")
+    run = st.button("Consultar ERA5 no GEE")
+
+# -----------------------------
+# Execução
+# -----------------------------
+if run:
+    if start_date > end_date:
+        st.error("A data de início é posterior à data de fim. Corrige sff.")
+    else:
+        with st.spinner("A consultar dados ERA5-Land via GEE..."):
+            try:
+                df = get_era5_land_daily_point(
+                    lat=float(lat),
+                    lon=float(lon),
+                    start_date=start_date.strftime("%Y-%m-%d"),
+                    end_date=end_date.strftime("%Y-%m-%d"),
+                )
+            except Exception as e:
+                st.error("Erro ao obter dados do GEE. Verifica a autenticação/configuração.")
+                st.exception(e)
+                st.stop()
+
+        if df.empty:
+            st.warning("Não foram devolvidos dados para o período/posição indicados.")
+        else:
+            st.success(f"Foram obtidos {len(df)} registos diários.")
+
+            # Mostra tabela
+            st.subheader("Tabela de resultados")
+            st.dataframe(df, use_container_width=True)
+
+            # Pequenos gráficos rápidos
+            st.subheader("Séries temporais")
+            tab1, tab2, tab3 = st.tabs(
+                ["Precipitação diária", "Temperatura 2m diária", "Vento 10m diário"]
+            )
+
+            with tab1:
+                st.line_chart(df.set_index("date")["total_precipitation"])
+
+            with tab2:
+                st.line_chart(df.set_index("date")["temperature_2m"])
+
+            with tab3:
+                st.line_chart(df.set_index("date")["wind_speed_10m"])
+
+            # Download CSV
+            csv = df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "Download CSV",
+                csv,
+                file_name="era5_gee_daily_point.csv",
+                mime="text/csv",
+            )
