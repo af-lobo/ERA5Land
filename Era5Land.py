@@ -320,7 +320,7 @@ if page == "Gerar código GEE":
 
     st.markdown("---")
 
-    if st.button("Gerar código JavaScript para o GEE"):
+if st.button("Gerar código JavaScript para o GEE"):
        gee_code = build_gee_code_daily(
             start_year=int(start_year),
             end_year=int(end_year),
