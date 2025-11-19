@@ -3,6 +3,34 @@ from daily_generator import build_gee_code_daily
 import streamlit as st
 import datetime as dt
 import re
+from era5_daily_analysis import (
+    streamlit_upload_and_load,
+    detect_variable_columns,
+    summarize_daily_variables,
+    frost_stats,
+    heavy_rain_events
+)
+
+st.title("Análise ERA5 diária — CSV do Google Earth Engine")
+
+df = streamlit_upload_and_load(st)
+
+if df is not None:
+    st.subheader("Pré-visualização")
+    st.dataframe(df.head())
+
+    var_cols = detect_variable_columns(df)
+    st.subheader("Variáveis disponíveis")
+    st.write(var_cols)
+
+    st.subheader("Resumo estatístico")
+    st.dataframe(summarize_daily_variables(df, var_cols))
+
+    st.subheader("Geadas")
+    st.write(frost_stats(df, 0.0))
+
+    st.subheader("Chuva intensa (>20 mm)")
+    st.write(heavy_rain_events(df, "precip_mm", 20))
 
 # ---------------------------
 # Helpers
