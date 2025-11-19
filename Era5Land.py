@@ -257,6 +257,12 @@ if page == "Gerar código GEE":
 
     # ---- Coluna 1: variável e anos ----
     with col1:
+        st.markdown("""
+Serão exportadas, para cada localização, séries **diárias** com:
+precipitação, temperaturas mínima/máxima/média, ponto de orvalho,
+humidade do solo (camada 1), radiação, evapotranspiração potencial,
+vento médio a 10 m e rajada máxima diária.
+""")
         st.markdown("#### Intervalo de anos (histórico)")
         start_year = st.number_input("Ano inicial", value=1995, step=1)
         end_year = st.number_input("Ano final", value=2024, step=1)
