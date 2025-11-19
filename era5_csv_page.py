@@ -1,4 +1,6 @@
 import streamlit as st
+import altair as alt
+
 from era5_daily_analysis import (
     streamlit_upload_and_load,
     detect_variable_columns,
@@ -7,6 +9,7 @@ from era5_daily_analysis import (
     summarize_event_frequency_severity,
     yearly_event_counts,
 )
+
 
 def show_era5_csv_page():
     st.title("Análise ERA5 diária – CSV do Google Earth Engine")
@@ -23,11 +26,17 @@ def show_era5_csv_page():
     var_cols = detect_variable_columns(df)
     st.subheader("Variáveis disponíveis")
     st.write(var_cols)
-    
-    # --------------------------
+
+    # -----------------------------------
+    # Estatísticas básicas
+    # -----------------------------------
+    summary = summarize_daily_variables(df, var_cols)
+    st.subheader("Resumo estatístico")
+    st.dataframe(summary)
+
+    # -----------------------------------
     # Parâmetros dos eventos
-    # --------------------------
-    
+    # -----------------------------------
     with st.expander("Parâmetros dos eventos climáticos", expanded=True):
         st.markdown("### Geada")
         frost_temp = st.number_input("Temperatura máxima para geada (°C)", value=0.0, step=0.5)
@@ -46,12 +55,10 @@ def show_era5_csv_page():
         st.markdown("### Calor e vento")
         heat_thresh = st.number_input("Limite para calor extremo (Tmax ≥ °C)", value=35.0, step=1.0)
         wind_gust_thresh = st.number_input("Limite para vento forte (rajada ≥ m/s)", value=20.0, step=1.0)
-    summary = summarize_daily_variables(df, var_cols)
-    
-    # --------------------------
+
+    # -----------------------------------
     # Cálculo dos eventos
-    # --------------------------
-    
+    # -----------------------------------
     masks = compute_event_masks(
         df,
         frost_temp_C=frost_temp,
@@ -67,14 +74,20 @@ def show_era5_csv_page():
         st.warning("Não foi possível calcular eventos (faltam algumas variáveis).")
         return
 
-    # --------------------------
+    # -----------------------------------
+    # Frequência e severidade
+    # -----------------------------------
+    freq_sev = summarize_event_frequency_severity(df, masks)
+    st.subheader("Frequência e severidade dos eventos")
+    st.dataframe(freq_sev)
+
+    # -----------------------------------
     # Ocorrências por ano (gráfico)
-    # --------------------------
+    # -----------------------------------
     yearly = yearly_event_counts(df, masks)
 
     st.subheader("Número de dias de evento por ano")
 
-    # selector de evento
     event_labels = {
         "frost": "Geada",
         "rain_day": "Dia chuvoso",
@@ -82,7 +95,9 @@ def show_era5_csv_page():
         "heat": "Calor extremo",
         "strong_wind": "Vento forte",
     }
+
     available_keys = sorted({e for e in yearly["event_key"].unique()})
+
     key = st.selectbox(
         "Escolhe o tipo de evento para visualizar",
         options=available_keys,
@@ -103,17 +118,3 @@ def show_era5_csv_page():
     )
 
     st.altair_chart(chart, use_container_width=True)
-
-    
-    freq_sev = summarize_event_frequency_severity(df, masks)
-    st.subheader("Frequência e severidade dos eventos")
-    st.dataframe(freq_sev)
-    
-    st.subheader("Resumo estatístico")
-    st.dataframe(summary)
-
-    st.subheader("Geadas (Tmin < 0°C)")
-    st.write(frost_stats(df, threshold_C=0.0))
-
-    st.subheader("Chuva intensa (>20 mm)")
-    st.write(heavy_rain_events(df, precip_col="precip_mm", threshold_mm=20))
