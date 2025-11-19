@@ -1,4 +1,5 @@
 from instructions import show_instructions
+from daily_generator import build_gee_code_daily
 import streamlit as st
 import datetime as dt
 import re
@@ -320,22 +321,17 @@ if page == "Gerar código GEE":
     st.markdown("---")
 
     if st.button("Gerar código JavaScript para o GEE"):
-        if start_year > end_year:
-            st.error("O ano inicial deve ser menor ou igual ao ano final.")
-        else:
-            gee_code = build_gee_code(
-                event_label=event_label,
-                start_year=int(start_year),
-                end_year=int(end_year),
-                start_month=int(start_month),
-                start_day=int(start_day),
-                end_month=int(end_month),
-                end_day=int(end_day),
-                locations_text=locations_text,
-            )
+        gee_code = build_gee_code_daily(
+            start_year=int(start_year),
+            end_year=int(end_year),
+            start_month=int(start_month),
+            start_day=int(start_day),
+            end_month=int(end_month),
+            end_day=int(end_day),
+            locations_text=locations_text,
+    )
 
-            st.subheader("Código JavaScript para colar no Code Editor do Google Earth Engine")
-            st.code(gee_code, language="javascript")
+        st.code(gee_code, language="javascript")
 
             st.download_button(
                 "📥 Descarregar código como ficheiro .js",
