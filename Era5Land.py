@@ -275,6 +275,28 @@ precipitação, temperaturas mínima/máxima/média, ponto de orvalho,
 humidade do solo (camada 1), radiação, evapotranspiração potencial,
 vento médio a 10 m e rajada máxima diária.
 """)
+    
+    # --- Localizações ---
+    locations_text = st.text_area(
+        "Localizações (uma por linha, formato: nome,lat,lon)",
+        value="Futrono,-40.15,-72.4",
+        height=150,
+    )
+
+    # --- Botão para gerar código ---
+    if st.button("Gerar código JavaScript para o GEE"):
+        code_js = build_gee_code_daily(
+            int(start_year),
+            int(end_year),
+            int(start_month),
+            int(start_day),
+            int(end_month),
+            int(end_day),
+            locations_text,
+        )
+
+    st.subheader("Código JavaScript gerado")
+    st.code(code_js, language="javascript")
 # ---------------------------
 # Página: Análise CSV ERA5
 # ---------------------------
