@@ -1,5 +1,6 @@
 from instructions import show_instructions
 from daily_generator import build_gee_code_daily
+from era5_csv_page import show_era5_csv_page
 import streamlit as st
 import datetime as dt
 import re
@@ -273,7 +274,7 @@ st.set_page_config(
 st.title("Gerador de Código")
 st.caption("Define uma janela sazonal (pode passar o fim do ano) e obtém o código JS para o GEE.")
 
-page = st.sidebar.radio("Navegação", ["Gerar código GEE", "Instruções"])
+page = st.sidebar.radio("Navegação", ["Gerar código GEE", "Análise CSV ERA5", "Instruções"])
 
 # ---------------------------
 # Página: Gerar código
@@ -359,7 +360,12 @@ if st.button("Gerar código JavaScript para o GEE"):
         file_name="era5_diario.js",
         mime="text/javascript",
     )
-
+# ---------------------------
+# Página: Análise CSV ERA5
+# ---------------------------
+elif page == "Análise CSV ERA5":
+    show_era5_csv_page()
+    
 # ---------------------------
 # Página: Instruções
 # ---------------------------
