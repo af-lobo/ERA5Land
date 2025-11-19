@@ -294,7 +294,6 @@ if st.button("Gerar código JavaScript para o GEE"):
             int(end_day),
             locations_text,
         )
-
     st.subheader("Código JavaScript gerado")
     st.code(code_js, language="javascript")
     
