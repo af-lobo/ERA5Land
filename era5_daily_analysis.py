@@ -24,7 +24,7 @@ import pandas as pd
 # 1. Leitura e limpeza do CSV ERA5 diário exportado do GEE
 # ============================================================
 
-def _read_all_lines(source) -> List[str]:
+def _read_all_lines(source) -> list[str]:
     """
     Lê todas as linhas de:
       - um caminho (str ou PathLike) OU
@@ -32,6 +32,8 @@ def _read_all_lines(source) -> List[str]:
 
     Devolve uma lista de strings (linhas).
     """
+    import os
+
     if isinstance(source, (str, os.PathLike)):
         with open(source, "r", encoding="utf-8") as f:
             content = f.read()
@@ -46,23 +48,19 @@ def _read_all_lines(source) -> List[str]:
 
 def load_era5_daily_from_gee(source) -> pd.DataFrame:
     """
-    Lê um CSV diário ERA5 exportado do GEE, no formato observado em:
-      /mnt/data/ERA5_diario_Futrono.csv
+    Lê um CSV diário ERA5 exportado do GEE, no formato observado em
+    ERA5_diario_Futrono.csv.
 
-    Formato:
-      - primeira linha: header normal com colunas
-        (inclui '.geo' no fim)
-      - linhas seguintes: uma string com todos os valores + JSON do .geo
-        ex: "0,1995-01-01,8.54,...,2.97,""{""type"":""MultiPoint"",""coordinates"":[]}""
+    - Primeira linha: header com as colunas, incluindo '.geo' no fim.
+    - Linhas seguintes: tudo vem dentro de aspas, ex:
+        "0,1995-01-01,8.54,...,2.97,""{""type"":""MultiPoint"",""coordinates"":[]}""
 
-    Parâmetro:
-      - source: caminho para o ficheiro (str / PathLike)
-                OU objecto file-like (BytesIO, etc.)
-
-    Devolve:
-      - DataFrame com colunas:
-          'system:index', 'date', variáveis climáticas...
-        A coluna '.geo' é descartada.
+    Estratégia robusta:
+      - Ler header e usar todas as colunas excepto '.geo'.
+      - Em cada linha de dados, remover aspas exteriores.
+      - Contar vírgulas e ficar apenas com os primeiros N campos
+        (N = nº de colunas úteis = len(header)-1), ignorando
+        tudo o que for JSON do .geo a seguir.
     """
     lines = _read_all_lines(source)
     if not lines:
@@ -71,13 +69,47 @@ def load_era5_daily_from_gee(source) -> pd.DataFrame:
     header_line = lines[0].strip()
     header = header_line.split(",")
 
-    # vamos descartar a última coluna (.geo)
-    if header[-1].strip() != ".geo":
-        # não é crítico, mas avisamos no log
-        # (podes trocar por logging.warning se quiseres)
-        print("Aviso: última coluna do header não é '.geo':", header[-1])
+    # todas as colunas excepto '.geo'
+    if header[-1].strip() == ".geo":
+        cols = header[:-1]
+    else:
+        # se por algum motivo não houver '.geo', usamos todas
+        cols = header
 
-    cols = header[:-1]
+    n_fields = len(cols)  # nº de campos que queremos por linha
+
+    def split_first_n_fields(s: str, n: int) -> list[str]:
+        """
+        Devolve a lista dos primeiros n campos separados por vírgula,
+        ignorando tudo o que vier depois (ex.: JSON do .geo).
+        """
+        s = s.strip()
+        if not s:
+            return []
+
+        # remove aspas exteriores se existirem
+        if s.startswith('"') and s.endswith('"'):
+            s = s[1:-1]
+
+        comma_count = 0
+        cut_idx = len(s)
+        for i, ch in enumerate(s):
+            if ch == ",":
+                comma_count += 1
+                if comma_count == n:
+                    cut_idx = i
+                    break
+
+        prefix = s[:cut_idx]
+        parts = prefix.split(",")
+
+        # se por algum motivo ainda não tiver n campos, completamos com vazio
+        if len(parts) < n:
+            parts += [""] * (n - len(parts))
+        elif len(parts) > n:
+            parts = parts[:n]
+
+        return parts
 
     rows = []
     for line in lines[1:]:
@@ -85,29 +117,15 @@ def load_era5_daily_from_gee(source) -> pd.DataFrame:
         if not line:
             continue
 
-        s = line
+        parts = split_first_n_fields(line, n_fields)
+        # se vier linha totalmente marada, ignoramos
+        if not parts or len(parts) != n_fields:
+            continue
 
-        # remover aspas exteriores
-        if s.startswith('"') and s.endswith('"'):
-            s = s[1:-1]
-
-        # remover parte do .geo (começa tipicamente em ,""{)
-        cut_idx = s.find(',""{')
-        if cut_idx != -1:
-            s_vals = s[:cut_idx]
-        else:
-            s_vals = s
-
-        parts = s_vals.split(",")
         rows.append(parts)
 
-    # verificar comprimento das linhas vs header
-    unique_lengths = {len(r) for r in rows}
-    if len(unique_lengths) != 1 or list(unique_lengths)[0] != len(cols):
-        raise ValueError(
-            f"Inconsistência no número de colunas: header tem {len(cols)}, "
-            f"mas as linhas têm comprimentos {unique_lengths}"
-        )
+    if not rows:
+        raise ValueError("Não foi possível extrair linhas válidas do CSV ERA5.")
 
     df = pd.DataFrame(rows, columns=cols)
 
@@ -122,6 +140,7 @@ def load_era5_daily_from_gee(source) -> pd.DataFrame:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
     return df
+
 
 
 # ============================================================
