@@ -244,9 +244,6 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("Gerador de Código")
-st.caption("Define uma janela sazonal (pode passar o fim do ano) e obtém o código JS para o GEE.")
-
 page = st.sidebar.radio("Navegação", ["Gerar código GEE", "Análise CSV ERA5", "Instruções"])
 
 # ---------------------------
