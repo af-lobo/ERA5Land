@@ -257,20 +257,6 @@ if page == "Gerar código GEE":
 
     # ---- Coluna 1: variável e anos ----
     with col1:
-        event_label = st.selectbox(
-            "Tipo de evento / variável",
-            [
-                "Precipitação total (mm/h)",
-        "Precipitação total horária (mm)",
-        "Temperatura 2 m (°C)",
-        "Ponto de orvalho 2 m (°C)",
-        "Humidade do solo camada 1 (0–7 cm)",
-        "Radiação solar global horária (W/m²)",
-        "Runoff total horário (mm)",
-        "Evapotranspiração potencial horária (mm)",
-            ],
-        )
-
         st.markdown("#### Intervalo de anos (histórico)")
         start_year = st.number_input("Ano inicial", value=1995, step=1)
         end_year = st.number_input("Ano final", value=2024, step=1)
