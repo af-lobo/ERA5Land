@@ -345,6 +345,180 @@ def heavy_rain_events(df: pd.DataFrame,
 
 
 # ============================================================
+# 5-BIS. Eventos compostos: máscaras, frequência e sazonalidade
+# ============================================================
+
+def compute_event_masks(
+    df: pd.DataFrame,
+    frost_temp_C: float = 0.0,
+    frost_max_wind_ms: float = 3.0,
+    frost_max_dew_delta_C: float = 2.0,
+    rain_threshold_mm: float = 0.2,
+    heavy_rain_threshold_mm: float = 20.0,
+    heat_threshold_C: float = 35.0,
+    wind_gust_threshold_ms: float = 20.0,
+) -> Dict[str, pd.Series]:
+    """
+    Cria máscaras booleanas (pd.Series[bool]) para vários eventos climáticos,
+    com parâmetros ajustáveis.
+
+    Geada (frost):
+      - Tmin <= frost_temp_C
+      - vento médio <= frost_max_wind_ms  (noite calma)
+      - |Tmin - ponto de orvalho| <= frost_max_dew_delta_C  (ar húmido)
+
+    Dia chuvoso:
+      - precip_mm >= rain_threshold_mm
+
+    Chuva forte:
+      - precip_mm >= heavy_rain_threshold_mm
+
+    Calor extremo:
+      - Tmax >= heat_threshold_C
+
+    Vento forte:
+      - rajada máxima >= wind_gust_threshold_ms
+    """
+    masks: Dict[str, pd.Series] = {}
+    cols = set(df.columns)
+
+    # -------- Geada --------
+    if {"tmin_C", "dew2m_mean_C", "wind_mean_ms"}.issubset(cols):
+        tmin = df["tmin_C"].astype(float)
+        dew = df["dew2m_mean_C"].astype(float)
+        wind = df["wind_mean_ms"].astype(float)
+
+        frost_mask = (
+            (tmin <= frost_temp_C)
+            & (wind <= frost_max_wind_ms)
+            & (tmin.sub(dew).abs() <= frost_max_dew_delta_C)
+        )
+        masks["frost"] = frost_mask
+    elif "tmin_C" in cols:
+        # fallback mais simples se faltar orvalho ou vento
+        tmin = df["tmin_C"].astype(float)
+        masks["frost"] = tmin <= frost_temp_C
+
+    # -------- Chuva --------
+    if "precip_mm" in cols:
+        precip = df["precip_mm"].astype(float)
+        masks["rain_day"] = precip >= rain_threshold_mm
+        masks["heavy_rain"] = precip >= heavy_rain_threshold_mm
+
+    # -------- Calor extremo --------
+    if "tmax_C" in cols:
+        tmax = df["tmax_C"].astype(float)
+        masks["heat"] = tmax >= heat_threshold_C
+
+    # -------- Vento forte --------
+    if "gust_max_ms" in cols:
+        gust = df["gust_max_ms"].astype(float)
+        masks["strong_wind"] = gust >= wind_gust_threshold_ms
+
+    return masks
+
+
+def summarize_event_frequency_severity(
+    df: pd.DataFrame,
+    masks: Dict[str, pd.Series],
+) -> pd.DataFrame:
+    """
+    Calcula frequência e severidade dos eventos definidos em `masks`.
+
+    Frequência:
+      - nº de dias de evento / nº total de dias
+
+    Severidade (média apenas em dias de evento):
+      - Geada: média de Tmin nos dias com geada
+      - Dia chuvoso / chuva forte: média de precip_mm nos dias de evento
+      - Calor extremo: média de Tmax
+      - Vento forte: média de gust_max_ms
+    """
+    total_days = len(df)
+    if total_days == 0:
+        raise ValueError("DataFrame vazio – não é possível calcular frequências.")
+
+    cols = set(df.columns)
+
+    event_meta = {
+        "frost":       {"label": "Geada",           "var": "tmin_C"},
+        "rain_day":    {"label": "Dia chuvoso",     "var": "precip_mm"},
+        "heavy_rain":  {"label": "Chuva forte",     "var": "precip_mm"},
+        "heat":        {"label": "Calor extremo",   "var": "tmax_C"},
+        "strong_wind": {"label": "Vento forte",     "var": "gust_max_ms"},
+    }
+
+    rows: List[Dict[str, Any]] = []
+
+    for key, mask in masks.items():
+        if len(mask) != total_days:
+            # proteção contra máscaras desalinhadas
+            mask = mask.reindex(df.index).fillna(False)
+
+        n_days = int(mask.sum())
+        freq_rel = n_days / total_days
+
+        meta = event_meta.get(key, {"label": key, "var": None})
+        label = meta["label"]
+        var = meta["var"]
+
+        severity = None
+        if var is not None and var in cols and n_days > 0:
+            severity = float(df.loc[mask, var].astype(float).mean())
+
+        rows.append(
+            {
+                "event_key": key,
+                "evento": label,
+                "dias_evento": n_days,
+                "frequencia_relativa": freq_rel,
+                "frequencia_percent": freq_rel * 100.0,
+                "variavel_severidade": var,
+                "severidade_media": severity,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def yearly_event_counts(
+    df: pd.DataFrame,
+    masks: Dict[str, pd.Series],
+) -> pd.DataFrame:
+    """
+    Devolve um DataFrame com nº de dias de evento por ano e por tipo de evento.
+
+    Output:
+        columns = ["event_key", "year", "dias_evento"]
+    """
+    if "date" not in df.columns:
+        raise ValueError("Coluna 'date' é necessária para agregar por ano.")
+
+    df_year = df.copy()
+    df_year["year"] = df_year["date"].dt.year
+
+    records: List[Dict[str, Any]] = []
+
+    for key, mask in masks.items():
+        # garantir alinhamento
+        series_mask = mask.reindex(df_year.index).fillna(False)
+        df_year["__mask"] = series_mask.values
+
+        counts = df_year.groupby("year")["__mask"].sum()
+
+        for year, n in counts.items():
+            records.append(
+                {
+                    "event_key": key,
+                    "year": int(year),
+                    "dias_evento": int(n),
+                }
+            )
+
+    return pd.DataFrame(records)
+
+
+# ============================================================
 # 6. Helpers para Streamlit (upload de ficheiro)
 # ============================================================
 
