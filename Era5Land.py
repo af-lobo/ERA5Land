@@ -321,24 +321,24 @@ if page == "Gerar código GEE":
     st.markdown("---")
 
 if st.button("Gerar código JavaScript para o GEE"):
-       gee_code = build_gee_code_daily(
-            start_year=int(start_year),
-            end_year=int(end_year),
-            start_month=int(start_month),
-            start_day=int(start_day),
-            end_month=int(end_month),
-            end_day=int(end_day),
-            locations_text=locations_text,
+    gee_code = build_gee_code_daily(
+        start_year=int(start_year),
+        end_year=int(end_year),
+        start_month=int(start_month),
+        start_day=int(start_day),
+        end_month=int(end_month),
+        end_day=int(end_day),
+        locations_text=locations_text,
     )
 
-       st.code(gee_code, language="javascript")
+    st.code(gee_code, language="javascript")
 
-            st.download_button(
-                "📥 Descarregar código como ficheiro .js",
-                gee_code,
-                file_name="era5land_sazonal.js",
-                mime="text/javascript",
-            )
+    st.download_button(
+        "📥 Descarregar código como ficheiro .js",
+        gee_code,
+        file_name="era5_diario.js",
+        mime="text/javascript",
+    )
 
 # ---------------------------
 # Página: Instruções
