@@ -285,7 +285,7 @@ vento médio a 10 m e rajada máxima diária.
 
     # --- Botão para gerar código ---
 if st.button("Gerar código JavaScript para o GEE"):
-        code_js = build_gee_code_daily(
+    code_js = build_gee_code_daily(
             int(start_year),
             int(end_year),
             int(start_month),
