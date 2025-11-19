@@ -253,7 +253,31 @@ page = st.sidebar.radio("Navegação", ["Gerar código GEE", "Análise CSV ERA5"
 # Página: Gerar código
 # ---------------------------
 if page == "Gerar código GEE":
-    build_gee_code_daily()
+    st.title("Gerador de Código")
+    st.caption("Define uma janela sazonal (pode passar o fim do ano) e obtém o código JS para o GEE.")
+
+    col1, col2 = st.columns(2)
+
+    # --- Coluna 1: anos ---
+    with col1:
+        st.markdown("#### Intervalo de anos (histórico)")
+        start_year = st.number_input("Ano inicial", value=1995, step=1)
+        end_year   = st.number_input("Ano final", value=2024, step=1)
+
+    # --- Coluna 2: datas da janela sazonal ---
+    with col2:
+        st.markdown("#### Janela sazonal")
+        start_month = st.number_input("Mês inicial", min_value=1, max_value=12, value=9)
+        start_day   = st.number_input("Dia inicial", min_value=1, max_value=31, value=5)
+        end_month   = st.number_input("Mês final", min_value=1, max_value=12, value=10)
+        end_day     = st.number_input("Dia final", min_value=1, max_value=31, value=15)
+
+    st.markdown("""
+Serão exportadas, para cada localização, séries **diárias** com:
+precipitação, temperaturas mínima/máxima/média, ponto de orvalho,
+humidade do solo (camada 1), radiação, evapotranspiração potencial,
+vento médio a 10 m e rajada máxima diária.
+""")
 # ---------------------------
 # Página: Análise CSV ERA5
 # ---------------------------
