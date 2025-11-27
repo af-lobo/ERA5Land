@@ -13,10 +13,11 @@ def build_gee_code_daily(
     Gera código JavaScript para o GEE em MODO DIÁRIO:
     - ERA5-Land: precipitação, T2m min/max/média, orvalho, solo, radiação, evapotranspiração
     - ERA5: vento médio 10m + rajada máxima diária
-    - Exporta um CSV por localização
+    - Exporta um CSV por localização (uma linha por dia)
+    locations_text: string com linhas no formato "Nome, lon, lat"
     """
 
-    # Parse das localizações vindas da app: "Nome, lon, lat" por linha
+    # 1) Parse das localizações vindas da app
     locations = []
     for line in locations_text.splitlines():
         line = line.strip()
@@ -39,7 +40,7 @@ def build_gee_code_daily(
     if not locations:
         return "// ERRO: nenhuma localização válida. Formato: Nome, lon, lat"
 
-    # Construir array JS de localizações
+    # 2) Construir array JS de localizações
     loc_js_lines = []
     for loc in locations:
         loc_js_lines.append(
@@ -49,7 +50,7 @@ def build_gee_code_daily(
 
     lines: list[str] = []
 
-    # Cabeçalho e parâmetros
+    # 3) Cabeçalho e parâmetros
     lines.append("// -------------------------------------------------------------")
     lines.append("// ERA5-Land + ERA5 – Séries DIÁRIAS por localização")
     lines.append("// -------------------------------------------------------------")
