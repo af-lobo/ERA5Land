@@ -284,7 +284,7 @@ vento médio a 10 m e rajada máxima diária.
     )
 
     # --- Botão para gerar código ---
-    if st.button("Gerar código diário para o GEE"):
+if st.button("Gerar código diário para o GEE"):
     if start_year > end_year:
         st.error("O ano inicial deve ser menor ou igual ao ano final.")
     else:
