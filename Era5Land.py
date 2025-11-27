@@ -284,18 +284,30 @@ vento médio a 10 m e rajada máxima diária.
     )
 
     # --- Botão para gerar código ---
-    if st.button("Gerar código JavaScript para o GEE"):
-        code_js = build_gee_code_daily(
-                int(start_year),
-                int(end_year),
-                int(start_month),
-                int(start_day),
-                int(end_month),
-                int(end_day),
-                locations_text,
+    if st.button("Gerar código diário para o GEE"):
+    if start_year > end_year:
+        st.error("O ano inicial deve ser menor ou igual ao ano final.")
+    else:
+        gee_code = build_gee_code_daily(
+            start_year=int(start_year),
+            end_year=int(end_year),
+            start_month=int(start_month),
+            start_day=int(start_day),
+            end_month=int(end_month),
+            end_day=int(end_day),
+            locations_text=locations_text,
         )
-        st.subheader("Código JavaScript gerado")
-        st.code(code_js, language="javascript")
+
+        st.subheader("Código JavaScript (séries diárias) para colar no GEE")
+        st.code(gee_code, language="javascript")
+
+        st.download_button(
+            "📥 Descarregar código como ficheiro .js",
+            gee_code,
+            file_name="era5_diario.js",
+            mime="text/javascript",
+        )
+
     
 # ---------------------------
 # Página: Análise CSV ERA5
