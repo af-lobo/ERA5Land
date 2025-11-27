@@ -264,10 +264,10 @@ if page == "Gerar código GEE":
     # --- Coluna 2: datas da janela sazonal ---
     with col2:
         st.markdown("#### Janela sazonal")
-        start_month = st.number_input("Mês inicial", min_value=1, max_value=12, value=9)
-        start_day   = st.number_input("Dia inicial", min_value=1, max_value=31, value=5)
-        end_month   = st.number_input("Mês final", min_value=1, max_value=12, value=10)
-        end_day     = st.number_input("Dia final", min_value=1, max_value=31, value=15)
+        start_month = st.number_input("Mês inicial", min_value=1, max_value=12, value=1)
+        start_day   = st.number_input("Dia inicial", min_value=1, max_value=31, value=1)
+        end_month   = st.number_input("Mês final", min_value=1, max_value=12, value=12)
+        end_day     = st.number_input("Dia final", min_value=1, max_value=31, value=31)
 
     st.markdown("""
 Serão exportadas, para cada localização, séries **diárias** com:
