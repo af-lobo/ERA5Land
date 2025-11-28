@@ -119,8 +119,14 @@ def build_gee_code_daily(
     lines.append("      var day  = startDate.advance(d, 'day');")
     lines.append("      var next = day.advance(1, 'day');")
     lines.append("")
-    lines.append("      var landDay = seaLand.filterDate(day, next);")
-    lines.append("      var era5Day = seaEra5.filterDate(day, next);")
+    lines.append("      var landDay = era5land
+    lines.append("        .filter(ee.Filter.calendarRange(startYear, endYear, 'year'))
+    lines.append("        .filter(ee.Filter.dayOfYear(startDoy, endDoy))
+    lines.append("        .filterDate(day, next);")
+    lines.append("      var era5Day = era5
+    lines.append("        .filter(ee.Filter.calendarRange(startYear, endYear, 'year'))
+    lines.append("        .filter(ee.Filter.dayOfYear(startDoy, endDoy))
+    lines.append("        .filterDate(day, next);")
     lines.append("")
     lines.append("      var hasData = landDay.size().gt(0);")
     lines.append("")
