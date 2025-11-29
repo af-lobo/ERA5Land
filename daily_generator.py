@@ -1,4 +1,56 @@
-import re
+"""
+Gera código JavaScript para o Google Earth Engine (ERA5-Land + ERA5)
+com séries diárias para uma ou várias localizações.
+
+Função principal a usar na app Streamlit:
+
+    build_gee_code_daily(
+        start_year: int,
+        end_year: int,
+        start_month: int,
+        start_day: int,
+        end_month: int,
+        end_day: int,
+        locations_text: str,   # "Nome, lon, lat" uma localização por linha
+    ) -> str
+"""
+
+from typing import List, Dict
+
+
+def _parse_locations(locations_text: str) -> List[Dict[str, float]]:
+    """
+    Converte o texto das localizações numa lista de dicionários:
+    [{"name": ..., "lon": ..., "lat": ...}, ...]
+
+    Formato esperado por linha:
+        Nome, lon, lat
+    Exemplo:
+        Futrono, -72.4, -40.15
+    """
+    locations: List[Dict[str, float]] = []
+
+    for line in locations_text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) != 3:
+            # linha mal formatada, ignorar
+            continue
+
+        name, lon_str, lat_str = parts
+        try:
+            # aceita '.' ou ',' como separador decimal (desde que não crie partes extra)
+            lon = float(lon_str.replace(",", "."))
+            lat = float(lat_str.replace(",", "."))
+            locations.append({"name": name, "lon": lon, "lat": lat})
+        except ValueError:
+            # se não conseguir converter, ignora a linha
+            continue
+
+    return locations
 
 
 def build_gee_code_daily(
@@ -11,290 +63,267 @@ def build_gee_code_daily(
     locations_text: str,
 ) -> str:
     """
-    Gera código JavaScript para o Google Earth Engine em modo DIÁRIO.
+    Devolve uma string com o código JavaScript completo para colar no
+    Code Editor do Google Earth Engine.
 
-    - Usa ERA5-Land (HORÁRIO) para:
-        * precipitação diária (mm)
-        * tmin / tmax / tmean (°C)
-        * ponto de orvalho médio 2m (°C)
-        * humidade do solo camada 1 (0–7 cm)
-        * radiação diária (J/m2) e média (W/m2)
-        * evapotranspiração potencial diária (mm)
-    - Usa ERA5 (HORÁRIO) para:
-        * velocidade média diária do vento 10m (m/s)
-        * rajada máxima diária 10m (m/s)
-    - Aplica uma janela sazonal (pode ou não passar o fim do ano).
-    - Só exporta os dias que caem DENTRO da janela sazonal.
-    - Exporta um CSV por localização, com uma linha por dia.
-
-    locations_text: linhas no formato "Nome, lon, lat"
-                    (lon = longitude, lat = latitude)
+    O código:
+      - usa ERA5-Land / ERA5 horário;
+      - calcula agregados DIÁRIOS por localização;
+      - aplica janela sazonal (pode passar o fim do ano);
+      - exporta um CSV por localização para o Google Drive.
     """
 
-    # ---------------------------------------------------------
-    # 1) Parse do texto de localizações vindo da app
-    # ---------------------------------------------------------
-    locations = []
-    for line in locations_text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        parts = [p.strip() for p in line.split(",")]
-        if len(parts) != 3:
-            continue
-
-        name_str, lon_str, lat_str = parts
-        try:
-            lon = float(lon_str.replace(",", "."))
-            lat = float(lat_str.replace(",", "."))
-        except ValueError:
-            continue
-
-        # nome "seguro" para JS (sem espaços, acentos, etc.)
-        safe_name = re.sub(r"[^0-9a-zA-Z_]+", "_", name_str.strip())
-        if not safe_name:
-            safe_name = "loc"
-
-        locations.append(
-            {
-                "name": name_str.strip(),
-                "safe": safe_name,
-                "lon": lon,
-                "lat": lat,
-            }
-        )
+    locations = _parse_locations(locations_text)
 
     if not locations:
-        return "// ERRO: nenhuma localização válida. Formato esperado: Nome, lon, lat"
-
-    # constrói o array JS "locations = [...]"
-    loc_js_lines = []
-    for loc in locations:
-        line = (
-            "  {name: '"
-            + loc["safe"]
-            + "', lon: "
-            + str(loc["lon"])
-            + ", lat: "
-            + str(loc["lat"])
-            + "}"
+        return (
+            "// ERRO: nenhuma localização válida encontrada.\n"
+            "// Formato esperado (uma por linha): Nome, lon, lat\n"
+            "// Exemplo: Futrono, -72.4, -40.15"
         )
-        loc_js_lines.append(line)
-    loc_js_block = ",\n".join(loc_js_lines)
 
-    # ---------------------------------------------------------
-    # 2) Construção do código JS linha a linha
-    # ---------------------------------------------------------
-    lines: list[str] = []
+    lines: List[str] = []
 
+    # ------------------------------------------------------------------
+    # Cabeçalho e parâmetros principais
+    # ------------------------------------------------------------------
     lines.append("// -------------------------------------------------------------")
     lines.append("// ERA5-Land + ERA5 – Séries DIÁRIAS por localização")
     lines.append("// Código gerado automaticamente pela app ERA5Land")
     lines.append("// -------------------------------------------------------------")
     lines.append("")
-    lines.append("var startYear = " + str(int(start_year)) + ";")
-    lines.append("var endYear   = " + str(int(end_year)) + ";")
+    lines.append(f"var startYear = {int(start_year)};")
+    lines.append(f"var endYear   = {int(end_year)};")
     lines.append("")
-    lines.append("var startMonth = " + str(int(start_month)) + ";")
-    lines.append("var startDay   = " + str(int(start_day)) + ";")
-    lines.append("var endMonth   = " + str(int(end_month)) + ";")
-    lines.append("var endDay     = " + str(int(end_day)) + ";")
+    lines.append(f"var startMonth = {int(start_month)};")
+    lines.append(f"var startDay   = {int(start_day)};")
+    lines.append(f"var endMonth   = {int(end_month)};")
+    lines.append(f"var endDay     = {int(end_day)};")
     lines.append("")
+
+    # ------------------------------------------------------------------
+    # Localizações
+    # ------------------------------------------------------------------
     lines.append("var locations = [")
-    lines.append(loc_js_block)
+
+    loc_entries: List[str] = []
+    for loc in locations:
+        name = loc["name"].replace("'", "\\'")
+        lon = loc["lon"]
+        lat = loc["lat"]
+        loc_entries.append(
+            f"  {{name: '{name}', lon: {lon}, lat: {lat}}}"
+        )
+
+    # juntar entradas, sem vírgula final desnecessária
+    for i, entry in enumerate(loc_entries):
+        if i < len(loc_entries) - 1:
+            lines.append(entry + ",")
+        else:
+            lines.append(entry)
+
     lines.append("];")
     lines.append("")
-    lines.append("// ===== FUNÇÕES BÁSICAS =====")
-    lines.append("")
-    lines.append("var computeDoy = function(month, day) {")
-    lines.append("  var d = ee.Date.fromYMD(2001, month, day);")
-    lines.append("  return d.getRelative('day', 'year').add(1);")
-    lines.append("};")
-    lines.append("")
-    lines.append("var startDoy = computeDoy(startMonth, startDay);")
-    lines.append("var endDoy   = computeDoy(endMonth, endDay);")
-    lines.append("var wrapsYear = startDoy.gt(endDoy);   // true se a janela passar pelo fim do ano")
-    lines.append("")
-    lines.append("var sanitizeName = function(name) {")
-    lines.append("  return name.replace(/[^0-9a-zA-Z_]+/g, '_');")
-    lines.append("};")
-    lines.append("")
-    lines.append("// ===== DATASETS (sem filtro sazonal aqui) =====")
-    lines.append("")
-    lines.append("var era5land = ee.ImageCollection('ECMWF/ERA5_LAND/HOURLY')")
-    lines.append("  .filter(ee.Filter.calendarRange(startYear, endYear, 'year'));")
-    lines.append("")
-    lines.append("var era5 = ee.ImageCollection('ECMWF/ERA5/HOURLY')")
-    lines.append("  .filter(ee.Filter.calendarRange(startYear, endYear, 'year'));")
-    lines.append("")
-    lines.append("// ===== AGREGAR DIARIAMENTE (APENAS DIAS DENTRO DA JANELA) =====")
-    lines.append("")
-    lines.append("var makeDailySeries = function(point) {")
-    lines.append("")
-    lines.append("  var startDate = ee.Date.fromYMD(startYear, 1, 1);")
-    lines.append("  var endDate   = ee.Date.fromYMD(endYear, 12, 31);")
-    lines.append("  var nDays     = endDate.difference(startDate, 'day');")
-    lines.append("")
-    lines.append("  var days = ee.List.sequence(0, nDays.subtract(1));")
-    lines.append("")
-    lines.append("  var fc = ee.FeatureCollection(")
-    lines.append("    days.map(function(d) {")
-    lines.append("      d = ee.Number(d);")
-    lines.append("      var day  = startDate.advance(d, 'day');")
-    lines.append("      var next = day.advance(1, 'day');")
-    lines.append("")
-    lines.append("      // day-of-year do dia em causa")
-    lines.append("      var doy = day.getRelative('day', 'year').add(1);")
-    lines.append("")
-    lines.append("      // esta flag diz se este dia está ou não dentro da janela sazonal")
-    lines.append("      var inSeason = ee.Algorithms.If(")
-    lines.append("        wrapsYear,")
-    lines.append("        // janela que passa pelo fim do ano (ex.: 15 Nov–15 Fev)")
-    lines.append("        doy.gte(startDoy).or(doy.lte(endDoy)),")
-    lines.append("        // janela normal (ex.: 1 Jan–2 Jan ou 5 Set–15 Out)")
-    lines.append("        doy.gte(startDoy).and(doy.lte(endDoy))")
-    lines.append("      );")
-    lines.append("")
-    lines.append("      // se o dia não estiver na janela, nem vale a pena processar")
-    lines.append("      return ee.Algorithms.If(")
-    lines.append("        inSeason,")
-    lines.append("        (function() {")
-    lines.append("")
-    lines.append("          var landDay = era5land.filterDate(day, next);")
-    lines.append("          var era5Day = era5.filterDate(day, next);")
-    lines.append("")
-    lines.append("          var hasData = landDay.size().gt(0);")
-    lines.append("")
-    lines.append("          return ee.Algorithms.If(")
-    lines.append("            hasData,")
-    lines.append("            (function() {")
-    lines.append("")
-    lines.append("              // ----- ERA5-Land: agregados diários -----")
-    lines.append("")
-    lines.append("              // Precipitação diária: acumulação máxima do dia (m) -> mm")
-    lines.append("              var precipImg = landDay.select('total_precipitation')")
-    lines.append("                .max().rename('precip_m');")
-    lines.append("")
-    lines.append("              var tminImg  = landDay.select('temperature_2m')")
-    lines.append("                .min().rename('tmin_K');")
-    lines.append("")
-    lines.append("              var tmaxImg  = landDay.select('temperature_2m')")
-    lines.append("                .max().rename('tmax_K');")
-    lines.append("")
-    lines.append("              var tmeanImg = landDay.select('temperature_2m')")
-    lines.append("                .mean().rename('tmean_K');")
-    lines.append("")
-    lines.append("              var dewMeanImg = landDay.select('dewpoint_temperature_2m')")
-    lines.append("                .mean().rename('dewmean_K');")
-    lines.append("")
-    lines.append("              var soilImg = landDay.select('volumetric_soil_water_layer_1')")
-    lines.append("                .mean().rename('soilw1');")
-    lines.append("")
-    lines.append("              var radSumImg = landDay.select('surface_solar_radiation_downwards')")
-    lines.append("                .sum().rename('rad_Jm2');")
-    lines.append("")
-    lines.append("              var radMeanImg = landDay.select('surface_solar_radiation_downwards')")
-    lines.append("                .mean().rename('rad_Jm2_per_h');")
-    lines.append("")
-    lines.append("              var pevImg = landDay.select('potential_evaporation')")
-    lines.append("                .sum().rename('pev_m');")
-    lines.append("")
-    lines.append("              // ----- ERA5: vento médio + rajada máxima -----")
-    lines.append("")
-    lines.append("              var uMeanImg = era5Day.select('u_component_of_wind_10m')")
-    lines.append("                .mean().rename('u10');")
-    lines.append("")
-    lines.append("              var vMeanImg = era5Day.select('v_component_of_wind_10m')")
-    lines.append("                .mean().rename('v10');")
-    lines.append("")
-    lines.append("              var gustMaxImg = era5Day.select('instantaneous_10m_wind_gust')")
-    lines.append("                .max().rename('gust10');")
-    lines.append("")
-    lines.append("              // Junta tudo numa imagem")
-    lines.append("              var aggImg = ee.Image.cat([")
-    lines.append("                precipImg,")
-    lines.append("                tminImg, tmaxImg, tmeanImg, dewMeanImg,")
-    lines.append("                soilImg,")
-    lines.append("                radSumImg, radMeanImg,")
-    lines.append("                pevImg,")
-    lines.append("                uMeanImg, vMeanImg, gustMaxImg")
-    lines.append("              ]);")
-    lines.append("")
-    lines.append("              // Redução para o ponto")
-    lines.append("              var vals = aggImg.reduceRegion({")
-    lines.append("                reducer: ee.Reducer.mean(),")
-    lines.append("                geometry: point,")
-    lines.append("                scale: 11100,")
-    lines.append("                bestEffort: true")
-    lines.append("              });")
-    lines.append("")
-    lines.append("              var valid = vals.size().gt(0);")
-    lines.append("")
-    lines.append("              return ee.Algorithms.If(")
-    lines.append("                valid,")
-    lines.append("                (function() {")
-    lines.append("")
-    lines.append("                  var u = ee.Number(vals.get('u10'));")
-    lines.append("                  var v = ee.Number(vals.get('v10'));")
-    lines.append("                  var windMean = u.pow(2).add(v.pow(2)).sqrt();")
-    lines.append("")
-    lines.append("                  var precip_mm = ee.Number(vals.get('precip_m')).multiply(1000);")
-    lines.append("                  var tmin_C    = ee.Number(vals.get('tmin_K')).subtract(273.15);")
-    lines.append("                  var tmax_C    = ee.Number(vals.get('tmax_K')).subtract(273.15);")
-    lines.append("                  var tmean_C   = ee.Number(vals.get('tmean_K')).subtract(273.15);")
-    lines.append("                  var dewmean_C = ee.Number(vals.get('dewmean_K')).subtract(273.15);")
-    lines.append("                  var soilw1    = vals.get('soilw1');")
-    lines.append("                  var rad_Jm2   = vals.get('rad_Jm2');")
-    lines.append("                  var rad_Wm2   = ee.Number(vals.get('rad_Jm2_per_h')).divide(3600);")
-    lines.append("                  var pev_mm    = ee.Number(vals.get('pev_m')).multiply(1000);")
-    lines.append("                  var gust_max  = ee.Number(vals.get('gust10'));")
-    lines.append("")
-    lines.append("                  return ee.Feature(null, {")
-    lines.append("                    'date': day.format('YYYY-MM-dd'),")
-    lines.append("                    'precip_mm': precip_mm,")
-    lines.append("                    'tmin_C': tmin_C,")
-    lines.append("                    'tmax_C': tmax_C,")
-    lines.append("                    'tmean_C': tmean_C,")
-    lines.append("                    'dew2m_mean_C': dewmean_C,")
-    lines.append("                    'soilw1_mean': soilw1,")
-    lines.append("                    'rad_Jm2_day': rad_Jm2,")
-    lines.append("                    'rad_Wm2_mean': rad_Wm2,")
-    lines.append("                    'pev_mm_day': pev_mm,")
-    lines.append("                    'wind_mean_ms': windMean,")
-    lines.append("                    'gust_max_ms': gust_max")
-    lines.append("                  });")
-    lines.append("")
-    lines.append("                })(),")
-    lines.append("                null")
-    lines.append("              );")
-    lines.append("")
-    lines.append("            })(),")
-    lines.append("            null")
-    lines.append("          );")
-    lines.append("")
-    lines.append("        })(),")
-    lines.append("        null")
-    lines.append("      );")
-    lines.append("    })")
-    lines.append("  );")
-    lines.append("")
-    lines.append("  // ficamos apenas com os dias em que houve precipitação calculada")
-    lines.append("  fc = fc.filter(ee.Filter.notNull(['precip_mm']));")
-    lines.append("  return fc;")
-    lines.append("};")
-    lines.append("")
-    lines.append("// ===== EXPORTAR PARA DRIVE =====")
-    lines.append("")
-    lines.append("locations.forEach(function(loc) {")
-    lines.append("  var point = ee.Geometry.Point([loc.lon, loc.lat]);")
-    lines.append("  var daily = makeDailySeries(point);")
-    lines.append("")
-    lines.append("  Export.table.toDrive({")
-    lines.append("    collection: daily,")
-    lines.append("    description: 'ERA5_diario_v02' + sanitizeName(loc.name)")
-    lines.append("      + '_' + startYear + '_' + endYear,")
-    lines.append("    fileFormat: 'CSV'")
-    lines.append("  });")
-    lines.append("});")
+
+    # ------------------------------------------------------------------
+    # Corpo JS fixo (igual ao script validado no GEE)
+    # ------------------------------------------------------------------
+    body = r"""
+// ===== FUNÇÕES BÁSICAS =====
+
+var computeDoy = function(month, day) {
+  var d = ee.Date.fromYMD(2001, month, day);
+  return d.getRelative('day', 'year').add(1);
+};
+
+var startDoy = computeDoy(startMonth, startDay);
+var endDoy   = computeDoy(endMonth, endDay);
+var wrapsYear = startDoy.gt(endDoy);   // true se a janela passar pelo fim do ano
+
+var sanitizeName = function(name) {
+  return name.replace(/[^0-9a-zA-Z_]+/g, '_');
+};
+
+// ===== DATASETS (sem filtro sazonal aqui) =====
+
+var era5land = ee.ImageCollection('ECMWF/ERA5_LAND/HOURLY')
+  .filter(ee.Filter.calendarRange(startYear, endYear, 'year'));
+
+var era5 = ee.ImageCollection('ECMWF/ERA5/HOURLY')
+  .filter(ee.Filter.calendarRange(startYear, endYear, 'year'));
+
+// ===== AGREGAR DIARIAMENTE (APENAS DIAS DENTRO DA JANELA) =====
+
+var makeDailySeries = function(point) {
+
+  var startDate = ee.Date.fromYMD(startYear, 1, 1);
+  var endDate   = ee.Date.fromYMD(endYear, 12, 31);
+  var nDays     = endDate.difference(startDate, 'day');
+
+  var days = ee.List.sequence(0, nDays.subtract(1));
+
+  var fc = ee.FeatureCollection(
+    days.map(function(d) {
+      d = ee.Number(d);
+      var day  = startDate.advance(d, 'day');
+      var next = day.advance(1, 'day');
+
+      // day-of-year do dia em causa
+      var doy = day.getRelative('day', 'year').add(1);
+
+      // esta flag diz se este dia está ou não dentro da janela sazonal
+      var inSeason = ee.Algorithms.If(
+        wrapsYear,
+        // janela que passa pelo fim do ano (ex.: 15 Nov–15 Fev)
+        doy.gte(startDoy).or(doy.lte(endDoy)),
+        // janela normal (ex.: 1 Jan–2 Jan ou 5 Set–15 Out)
+        doy.gte(startDoy).and(doy.lte(endDoy))
+      );
+
+      // se o dia não estiver na janela, nem vale a pena processar
+      return ee.Algorithms.If(
+        inSeason,
+        (function() {
+
+          var landDay = era5land.filterDate(day, next);
+          var era5Day = era5.filterDate(day, next);
+
+          var hasData = landDay.size().gt(0);
+
+          return ee.Algorithms.If(
+            hasData,
+            (function() {
+
+              // ----- ERA5-Land: agregados diários -----
+
+              // Precipitação diária: acumulação máxima do dia (m) -> mm
+              var precipImg = landDay.select('total_precipitation')
+                .max().rename('precip_m');
+
+              var tminImg  = landDay.select('temperature_2m')
+                .min().rename('tmin_K');
+
+              var tmaxImg  = landDay.select('temperature_2m')
+                .max().rename('tmax_K');
+
+              var tmeanImg = landDay.select('temperature_2m')
+                .mean().rename('tmean_K');
+
+              var dewMeanImg = landDay.select('dewpoint_temperature_2m')
+                .mean().rename('dewmean_K');
+
+              var soilImg = landDay.select('volumetric_soil_water_layer_1')
+                .mean().rename('soilw1');
+
+              var radSumImg = landDay.select('surface_solar_radiation_downwards')
+                .sum().rename('rad_Jm2');
+
+              var radMeanImg = landDay.select('surface_solar_radiation_downwards')
+                .mean().rename('rad_Jm2_per_h');
+
+              var pevImg = landDay.select('potential_evaporation')
+                .sum().rename('pev_m');
+
+              // ----- ERA5: vento médio + rajada máxima -----
+
+              var uMeanImg = era5Day.select('u_component_of_wind_10m')
+                .mean().rename('u10');
+
+              var vMeanImg = era5Day.select('v_component_of_wind_10m')
+                .mean().rename('v10');
+
+              var gustMaxImg = era5Day.select('instantaneous_10m_wind_gust')
+                .max().rename('gust10');
+
+              // Junta tudo numa imagem
+              var aggImg = ee.Image.cat([
+                precipImg,
+                tminImg, tmaxImg, tmeanImg, dewMeanImg,
+                soilImg,
+                radSumImg, radMeanImg,
+                pevImg,
+                uMeanImg, vMeanImg, gustMaxImg
+              ]);
+
+              // Redução para o ponto
+              var vals = aggImg.reduceRegion({
+                reducer: ee.Reducer.mean(),
+                geometry: point,
+                scale: 11100,
+                bestEffort: true
+              });
+
+              var valid = vals.size().gt(0);
+
+              return ee.Algorithms.If(
+                valid,
+                (function() {
+
+                  var u = ee.Number(vals.get('u10'));
+                  var v = ee.Number(vals.get('v10'));
+                  var windMean = u.pow(2).add(v.pow(2)).sqrt();
+
+                  var precip_mm = ee.Number(vals.get('precip_m')).multiply(1000);
+                  var tmin_C    = ee.Number(vals.get('tmin_K')).subtract(273.15);
+                  var tmax_C    = ee.Number(vals.get('tmax_K')).subtract(273.15);
+                  var tmean_C   = ee.Number(vals.get('tmean_K')).subtract(273.15);
+                  var dewmean_C = ee.Number(vals.get('dewmean_K')).subtract(273.15);
+                  var soilw1    = vals.get('soilw1');
+                  var rad_Jm2   = vals.get('rad_Jm2');
+                  var rad_Wm2   = ee.Number(vals.get('rad_Jm2_per_h')).divide(3600);
+                  var pev_mm    = ee.Number(vals.get('pev_m')).multiply(1000);
+                  var gust_max  = ee.Number(vals.get('gust10'));
+
+                  return ee.Feature(null, {
+                    'date': day.format('YYYY-MM-dd'),
+                    'precip_mm': precip_mm,
+                    'tmin_C': tmin_C,
+                    'tmax_C': tmax_C,
+                    'tmean_C': tmean_C,
+                    'dew2m_mean_C': dewmean_C,
+                    'soilw1_mean': soilw1,
+                    'rad_Jm2_day': rad_Jm2,
+                    'rad_Wm2_mean': rad_Wm2,
+                    'pev_mm_day': pev_mm,
+                    'wind_mean_ms': windMean,
+                    'gust_max_ms': gust_max
+                  });
+
+                })(),
+                null
+              );
+
+            })(),
+            null
+          );
+
+        })(),
+        null
+      );
+    })
+  );
+
+  // ficamos apenas com os dias em que houve precipitação calculada
+  fc = fc.filter(ee.Filter.notNull(['precip_mm']));
+  return fc;
+};
+
+// ===== EXPORTAR PARA DRIVE =====
+
+locations.forEach(function(loc) {
+  var point = ee.Geometry.Point([loc.lon, loc.lat]);
+  var daily = makeDailySeries(point);
+
+  Export.table.toDrive({
+    collection: daily,
+    description: 'ERA5_diario_' + sanitizeName(loc.name)
+      + '_' + startYear + '_' + endYear,
+    fileFormat: 'CSV'
+  });
+});
+"""
+    # remover a primeira linha em branco do bloco raw
+    body = body.lstrip("\n")
+    lines.append(body)
 
     return "\n".join(lines)
