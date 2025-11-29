@@ -291,7 +291,7 @@ def build_gee_code_daily(
     lines.append("")
     lines.append("  Export.table.toDrive({")
     lines.append("    collection: daily,")
-    lines.append("    description: 'ERA5_diario_' + sanitizeName(loc.name)")
+    lines.append("    description: 'ERA5_diario_v02' + sanitizeName(loc.name)")
     lines.append("      + '_' + startYear + '_' + endYear,")
     lines.append("    fileFormat: 'CSV'")
     lines.append("  });")
