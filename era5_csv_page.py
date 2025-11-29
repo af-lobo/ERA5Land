@@ -8,34 +8,92 @@ from era5_daily_analysis import (
     compute_event_masks,
     summarize_event_frequency_severity,
     yearly_event_counts,
+    apply_seasonal_window,   # <- IMPORT DA JANELA SAZONAL
 )
 
 
 def show_era5_csv_page():
     st.title("Análise ERA5 diária – CSV do Google Earth Engine")
 
-    df = streamlit_upload_and_load(st, "Carrega ficheiro diário ERA5 do GEE")
+    # -------------------------------------------------
+    # 1) Carregar ficheiro
+    # -------------------------------------------------
+    df_raw = streamlit_upload_and_load(st, "Carrega ficheiro diário ERA5 do GEE")
 
-    if df is None:
+    if df_raw is None:
         st.info("Carrega um ficheiro CSV exportado do GEE para começar.")
         return
 
-    st.subheader("Pré-visualização")
-    st.dataframe(df.head())
+    st.subheader("Pré-visualização (dados originais)")
+    st.dataframe(df_raw.head())
 
+    # -------------------------------------------------
+    # 2) Janela sazonal para ANÁLISE
+    # (o CSV pode ter ano completo, mas aqui filtras só o período de interesse)
+    # -------------------------------------------------
+    st.subheader("Janela sazonal para análise")
+
+    use_window = st.checkbox(
+        "Aplicar janela sazonal (mesmo que o CSV tenha o ano completo)",
+        value=False,
+    )
+
+    if use_window:
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("**Início**")
+            start_month = st.number_input("Mês inicial", min_value=1, max_value=12, value=1, step=1)
+            start_day = st.number_input("Dia inicial", min_value=1, max_value=31, value=1, step=1)
+
+        with col2:
+            st.markdown("**Fim**")
+            end_month = st.number_input("Mês final", min_value=1, max_value=12, value=12, step=1)
+            end_day = st.number_input("Dia final", min_value=1, max_value=31, value=31, step=1)
+
+        df = apply_seasonal_window(
+            df_raw,
+            start_month=int(start_month),
+            start_day=int(start_day),
+            end_month=int(end_month),
+            end_day=int(end_day),
+        )
+
+        st.caption(
+            f"Janela aplicada a todos os anos: "
+            f"{start_day:02d}/{start_month:02d} – {end_day:02d}/{end_month:02d} "
+            f"(dias após filtro: {len(df)} de {len(df_raw)})"
+        )
+
+        if df.empty:
+            st.warning(
+                "Após aplicar a janela sazonal não ficou nenhum dia. "
+                "Ajusta as datas ou desactiva a opção de janela sazonal."
+            )
+            return
+    else:
+        df = df_raw.copy()
+        st.caption(f"Nenhum filtro sazonal aplicado (dias em análise: {len(df)})")
+
+    # -------------------------------------------------
+    # 3) Variáveis disponíveis
+    # -------------------------------------------------
     var_cols = detect_variable_columns(df)
-    st.subheader("Variáveis disponíveis")
+    st.subheader("Variáveis disponíveis na série filtrada")
     st.write(var_cols)
 
     # -----------------------------------
-    # Estatísticas básicas
+    # 4) Estatísticas básicas
     # -----------------------------------
     summary = summarize_daily_variables(df, var_cols)
     st.subheader("Resumo estatístico")
-    st.dataframe(summary)
+    if summary.empty:
+        st.info("Não foram encontradas variáveis numéricas conhecidas para resumir.")
+    else:
+        st.dataframe(summary)
 
     # -----------------------------------
-    # Parâmetros dos eventos
+    # 5) Parâmetros dos eventos
     # -----------------------------------
     with st.expander("Parâmetros dos eventos climáticos", expanded=True):
         st.markdown("### Geada")
@@ -57,7 +115,7 @@ def show_era5_csv_page():
         wind_gust_thresh = st.number_input("Limite para vento forte (rajada ≥ m/s)", value=20.0, step=1.0)
 
     # -----------------------------------
-    # Cálculo dos eventos
+    # 6) Cálculo dos eventos
     # -----------------------------------
     masks = compute_event_masks(
         df,
@@ -75,14 +133,14 @@ def show_era5_csv_page():
         return
 
     # -----------------------------------
-    # Frequência e severidade
+    # 7) Frequência e severidade
     # -----------------------------------
     freq_sev = summarize_event_frequency_severity(df, masks)
     st.subheader("Frequência e severidade dos eventos")
     st.dataframe(freq_sev)
 
     # -----------------------------------
-    # Ocorrências por ano (gráfico)
+    # 8) Ocorrências por ano (gráfico)
     # -----------------------------------
     yearly = yearly_event_counts(df, masks)
 
@@ -95,6 +153,10 @@ def show_era5_csv_page():
         "heat": "Calor extremo",
         "strong_wind": "Vento forte",
     }
+
+    if yearly.empty:
+        st.info("Não há dados suficientes para o gráfico anual.")
+        return
 
     available_keys = sorted({e for e in yearly["event_key"].unique()})
 
