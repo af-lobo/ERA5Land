@@ -1,39 +1,42 @@
-"""
-ERA5 Daily Analysis Utilities
-=============================
-
-Funções de apoio para:
-- carregar CSVs diários ERA5 (GEE)
-- detectar colunas de variáveis
-- calcular estatísticas descritivas
-- construir máscaras de eventos climáticos (geada, chuva, calor, vento)
-- contar ocorrências por ano
-- integração com Streamlit (upload + load)
-"""
-
 import pandas as pd
-from datetime import datetime
+import numpy as np
+from typing import Dict, List, Optional
 
 
-# -------------------------------------------------------------------------
-# 1. CARREGAMENTO & UTILITÁRIOS BÁSICOS
-# -------------------------------------------------------------------------
-
-def load_era5_csv(path_or_buffer) -> pd.DataFrame:
+# ---------------------------------------------------------
+# 1. Carregar ficheiro via Streamlit
+# ---------------------------------------------------------
+def streamlit_upload_and_load(st, label: str) -> Optional[pd.DataFrame]:
     """
-    Carrega um CSV ERA5 (ficheiro ou buffer) e força tipos adequados.
-    Assume:
-      - coluna 'date' em formato YYYY-MM-DD
-      - restantes variáveis numéricas nas colunas standard
+    Mostra um file_uploader no Streamlit e devolve um DataFrame
+    com a coluna 'date' convertida para datetime (se existir).
     """
-    df = pd.read_csv(path_or_buffer)
+    uploaded = st.file_uploader(label, type=["csv"])
+    if uploaded is None:
+        return None
 
-    # Converter data
+    # Lê o CSV tal como vem do GEE
+    df = pd.read_csv(uploaded)
+
+    # Converte a coluna 'date' se existir
     if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        try:
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        except Exception:
+            pass
 
-    # Converter colunas numéricas
-    numeric_cols = [
+    return df
+
+
+# ---------------------------------------------------------
+# 2. Deteção de colunas de variáveis
+# ---------------------------------------------------------
+def detect_variable_columns(df: pd.DataFrame) -> List[str]:
+    """
+    Identifica colunas relevantes de variáveis meteorológicas
+    no CSV gerado no GEE.
+    """
+    candidate_cols = [
         "precip_mm",
         "tmin_C",
         "tmax_C",
@@ -47,79 +50,65 @@ def load_era5_csv(path_or_buffer) -> pd.DataFrame:
         "gust_max_ms",
     ]
 
-    for col in numeric_cols:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    return df
+    return [c for c in candidate_cols if c in df.columns]
 
 
-def streamlit_upload_and_load(st, label: str):
+# ---------------------------------------------------------
+# 3. Resumo estatístico diário
+# ---------------------------------------------------------
+def summarize_daily_variables(df: pd.DataFrame, var_cols: List[str]) -> pd.DataFrame:
     """
-    Pequeno helper para Streamlit:
-    - mostra um file_uploader
-    - quando o utilizador faz upload, lê o CSV com load_era5_csv
-    """
-    uploaded = st.file_uploader(label, type=["csv"])
-    if uploaded is None:
-        return None
-
-    try:
-        df = load_era5_csv(uploaded)
-        return df
-    except Exception as e:
-        st.error(f"Erro ao ler CSV: {e}")
-        return None
-
-
-# -------------------------------------------------------------------------
-# 2. DETECÇÃO DE VARIÁVEIS & ESTATÍSTICAS
-# -------------------------------------------------------------------------
-
-def detect_variable_columns(df: pd.DataFrame):
-    """
-    Devolve a lista de colunas 'relevantes' (numéricas) para análise.
-    Exclui colunas óbvias de índice/geo.
-    """
-    exclude = {"date", "system:index", ".geo"}
-    numeric_cols = []
-
-    for col in df.columns:
-        if col in exclude:
-            continue
-        if pd.api.types.is_numeric_dtype(df[col]):
-            numeric_cols.append(col)
-
-    return numeric_cols
-
-
-def summarize_daily_variables(df: pd.DataFrame, var_cols):
-    """
-    Faz um resumo estatístico tipo describe() para as variáveis diárias.
+    Produz estatísticas resumo (count, mean, std, min, quartis, max)
+    para as colunas de variáveis.
     """
     if not var_cols:
         return pd.DataFrame()
 
     summary = df[var_cols].describe().T
-    summary = summary.rename(
-        columns={
-            "count": "n",
-            "mean": "média",
-            "std": "desvio_padrao",
-            "min": "mín",
-            "25%": "p25",
-            "50%": "p50",
-            "75%": "p75",
-            "max": "máx",
-        }
-    )
-    return summary.reset_index().rename(columns={"index": "variável"})
+    summary = summary.rename(columns={"50%": "median"})
+    return summary
 
 
-# -------------------------------------------------------------------------
-# 3. EVENTOS CLIMÁTICOS – MÁSCARAS
-# -------------------------------------------------------------------------
+# ---------------------------------------------------------
+# 4. Aplicar janela sazonal opcional (para análise)
+# ---------------------------------------------------------
+def apply_seasonal_window(
+    df: pd.DataFrame,
+    start_month: int = 1,
+    start_day: int = 1,
+    end_month: int = 12,
+    end_day: int = 31,
+) -> pd.DataFrame:
+    """
+    Filtra o DataFrame para uma janela sazonal (mês/dia) aplicada
+    a todos os anos. Se a janela passar pelo fim do ano (ex.: 15 Nov–15 Fev),
+    é tratada automaticamente.
+    """
+    if "date" not in df.columns or not np.issubdtype(df["date"].dtype, np.datetime64):
+        # Se não houver coluna date em datetime, devolve o df original
+        return df
 
+    df = df.copy()
+    doy = df["date"].dt.dayofyear
+
+    # construímos um ano de referência (2001) para calcular DOY de limites
+    start_ref = pd.Timestamp(year=2001, month=start_month, day=start_day)
+    end_ref = pd.Timestamp(year=2001, month=end_month, day=end_day)
+    start_doy = start_ref.dayofyear
+    end_doy = end_ref.dayofyear
+
+    if start_doy <= end_doy:
+        mask = (doy >= start_doy) & (doy <= end_doy)
+    else:
+        # janela que passa por 31/12
+        mask = (doy >= start_doy) | (doy <= end_doy)
+
+    return df.loc[mask].copy()
+
+
+# ---------------------------------------------------------
+# 5. Cálculo de máscaras de eventos
+# ---------------------------------------------------------
 def compute_event_masks(
     df: pd.DataFrame,
     frost_temp_C: float = 0.0,
@@ -129,148 +118,121 @@ def compute_event_masks(
     heavy_rain_threshold_mm: float = 20.0,
     heat_threshold_C: float = 35.0,
     wind_gust_threshold_ms: float = 20.0,
-):
+) -> Dict[str, pd.Series]:
     """
-    Constrói um dicionário de máscaras booleanas para diferentes eventos:
-
-      - 'frost'       : geada (tmin <= frost_temp, vento médio e |Tmin - dew| controlados)
-      - 'rain_day'    : dia chuvoso (precip >= rain_threshold)
-      - 'heavy_rain'  : chuva forte (precip >= heavy_rain_threshold)
-      - 'heat'        : calor extremo (tmax >= heat_threshold)
-      - 'strong_wind' : vento forte (gust_max >= wind_gust_threshold)
-
-    Só cria a máscara se as colunas necessárias existirem.
+    Cria uma série de máscaras booleanas (uma por tipo de evento),
+    assumindo nomes de colunas do CSV diário.
     """
+    masks: Dict[str, pd.Series] = {}
 
-    masks = {}
-
-    # Garantir que temos coluna 'date' em datetime
-    if "date" in df.columns and not pd.api.types.is_datetime64_any_dtype(df["date"]):
+    # Garantir que temos coluna date em datetime (para outras análises)
+    if "date" in df.columns and not np.issubdtype(df["date"].dtype, np.datetime64):
         df = df.copy()
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
-    # ------ Geada  --------------------------------------------------------
-    frost_cols = {"tmin_C", "dew2m_mean_C", "wind_mean_ms"}
-    if frost_cols.issubset(df.columns):
+    # ---------- Geada ----------
+    if {"tmin_C", "wind_mean_ms", "dew2m_mean_C"}.issubset(df.columns):
         dew_delta = (df["tmin_C"] - df["dew2m_mean_C"]).abs()
-        mask_frost = (
+        frost_mask = (
             (df["tmin_C"] <= frost_temp_C)
             & (df["wind_mean_ms"] <= frost_max_wind_ms)
             & (dew_delta <= frost_max_dew_delta_C)
         )
-        masks["frost"] = mask_frost
+        masks["frost"] = frost_mask
 
-    # ------ Dia chuvoso ---------------------------------------------------
+    # ---------- Chuva ----------
     if "precip_mm" in df.columns:
         masks["rain_day"] = df["precip_mm"] >= rain_threshold_mm
         masks["heavy_rain"] = df["precip_mm"] >= heavy_rain_threshold_mm
 
-    # ------ Calor extremo -------------------------------------------------
+    # ---------- Calor ----------
     if "tmax_C" in df.columns:
         masks["heat"] = df["tmax_C"] >= heat_threshold_C
 
-    # ------ Vento forte ---------------------------------------------------
+    # ---------- Vento forte ----------
     if "gust_max_ms" in df.columns:
         masks["strong_wind"] = df["gust_max_ms"] >= wind_gust_threshold_ms
 
     return masks
 
 
-# -------------------------------------------------------------------------
-# 4. FREQÜÊNCIA E “SEVERIDADE”
-# -------------------------------------------------------------------------
-
-def summarize_event_frequency_severity(df: pd.DataFrame, masks: dict) -> pd.DataFrame:
+# ---------------------------------------------------------
+# 6. Resumo de frequência e severidade
+# ---------------------------------------------------------
+def summarize_event_frequency_severity(
+    df: pd.DataFrame, masks: Dict[str, pd.Series]
+) -> pd.DataFrame:
     """
-    Para cada evento em `masks`, calcula:
-
-      - nº de dias com evento
-      - % de dias com evento
-      - uma métrica simples de severidade média (depende do tipo de evento)
-
-    Retorna DataFrame com colunas:
-      event_key, n_days, total_days, freq_pct, metric, severity_mean
+    Para cada tipo de evento devolve:
+      - nº total de dias com evento
+      - % de dias no período
+      - severidade média (quando faz sentido)
     """
-
-    total_days = len(df)
-    if total_days == 0 or not masks:
+    if not masks:
         return pd.DataFrame()
 
-    rows = []
+    results = []
+    total_days = len(df)
+
+    # Qual variável usar como "severidade" por evento
+    severity_var = {
+        "frost": "tmin_C",
+        "rain_day": "precip_mm",
+        "heavy_rain": "precip_mm",
+        "heat": "tmax_C",
+        "strong_wind": "gust_max_ms",
+    }
 
     for key, mask in masks.items():
-        n = int(mask.sum())
-        if n == 0:
-            rows.append(
-                {
-                    "event_key": key,
-                    "n_days": 0,
-                    "total_days": total_days,
-                    "freq_pct": 0.0,
-                    "metric": None,
-                    "severity_mean": None,
-                }
-            )
-            continue
+        days_event = int(mask.sum())
+        perc = 100.0 * days_event / total_days if total_days > 0 else 0.0
 
-        # Escolher uma métrica de severidade “natural” para cada evento
-        if key in ("rain_day", "heavy_rain"):
-            metric_col = "precip_mm"
-        elif key == "frost":
-            metric_col = "tmin_C"
-        elif key == "heat":
-            metric_col = "tmax_C"
-        elif key == "strong_wind":
-            metric_col = "gust_max_ms"
+        sev_col = severity_var.get(key)
+        if sev_col is not None and sev_col in df.columns:
+            sev_mean = df.loc[mask, sev_col].mean()
         else:
-            metric_col = None
+            sev_mean = np.nan
 
-        if metric_col is not None and metric_col in df.columns:
-            severity_mean = float(df.loc[mask, metric_col].mean())
-        else:
-            severity_mean = None
-
-        rows.append(
+        results.append(
             {
                 "event_key": key,
-                "n_days": n,
-                "total_days": total_days,
-                "freq_pct": 100.0 * n / total_days,
-                "metric": metric_col,
-                "severity_mean": severity_mean,
+                "dias_evento": days_event,
+                "percent_dias": perc,
+                "severidade_media": sev_mean,
             }
         )
 
-    return pd.DataFrame(rows)
+    return pd.DataFrame(results)
 
 
-# -------------------------------------------------------------------------
-# 5. CONTAGEM POR ANO
-# -------------------------------------------------------------------------
-
-def yearly_event_counts(df: pd.DataFrame, masks: dict) -> pd.DataFrame:
+# ---------------------------------------------------------
+# 7. Contagem anual de eventos
+# ---------------------------------------------------------
+def yearly_event_counts(df: pd.DataFrame, masks: Dict[str, pd.Series]) -> pd.DataFrame:
     """
-    Constrói uma tabela (ano, event_key, dias_evento) para cada máscara.
+    Devolve um DataFrame com colunas:
+      - year
+      - event_key
+      - dias_evento
+    para facilitar a construção de gráficos.
     """
-
     if "date" not in df.columns:
         return pd.DataFrame()
 
-    out_rows = []
-    dates = pd.to_datetime(df["date"], errors="coerce")
-    years = dates.dt.year
+    if not np.issubdtype(df["date"].dtype, np.datetime64):
+        df = df.copy()
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
+    df = df.dropna(subset=["date"]).copy()
+    df["year"] = df["date"].dt.year
+
+    rows = []
     for key, mask in masks.items():
-        if mask is None:
-            continue
-        series = pd.Series(mask)
-        df_tmp = pd.DataFrame({"year": years, "mask": series})
-        grp = df_tmp[df_tmp["mask"]].groupby("year").size().reset_index(name="dias_evento")
-        grp["event_key"] = key
-        out_rows.append(grp)
+        tmp = df.loc[mask].groupby("year").size().reset_index(name="dias_evento")
+        tmp["event_key"] = key
+        rows.append(tmp)
 
-    if not out_rows:
+    if not rows:
         return pd.DataFrame()
 
-    result = pd.concat(out_rows, ignore_index=True)
-    return result[["year", "event_key", "dias_evento"]]
+    return pd.concat(rows, ignore_index=True)
