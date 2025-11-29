@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 
+
 # ============================================================
 # 1. Leitura e limpeza do CSV ERA5 diário exportado do GEE
 # ============================================================
