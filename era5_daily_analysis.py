@@ -1,183 +1,50 @@
 """
 ERA5 Daily Analysis Utilities
-============================
+=============================
 
-Ferramentas para analisar os CSVs diários gerados pelo GEE (ERA5-Land + ERA5).
-
-Inclui:
-- filtragem por janela sazonal
-- análises de eventos climáticos (geada, chuva persistente, vento extremo, etc.)
-- agregações anuais e estatísticas
+Funções de apoio para:
+- carregar CSVs diários ERA5 (GEE)
+- detectar colunas de variáveis
+- calcular estatísticas descritivas
+- construir máscaras de eventos climáticos (geada, chuva, calor, vento)
+- contar ocorrências por ano
+- integração com Streamlit (upload + load)
 """
 
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 
 
 # -------------------------------------------------------------------------
-# 1. UTILITÁRIOS
+# 1. CARREGAMENTO & UTILITÁRIOS BÁSICOS
 # -------------------------------------------------------------------------
 
-def compute_doy(month: int, day: int) -> int:
-    """Devolve o dia do ano (1–366) usando um ano fixo (2001)."""
-    ref = datetime(2001, month, day)
-    return ref.timetuple().tm_yday
-
-
-def filter_seasonal_window(df: pd.DataFrame,
-                           start_month: int, start_day: int,
-                           end_month: int, end_day: int) -> pd.DataFrame:
+def load_era5_csv(path_or_buffer) -> pd.DataFrame:
     """
-    Filtra um DataFrame ERA5 diário segundo uma janela sazonal.
-
-    Exemplo:
-        df = filter_seasonal_window(df, 1, 1, 2, 28)
+    Carrega um CSV ERA5 (ficheiro ou buffer) e força tipos adequados.
+    Assume:
+      - coluna 'date' em formato YYYY-MM-DD
+      - restantes variáveis numéricas nas colunas standard
     """
-    df = df.copy()
+    df = pd.read_csv(path_or_buffer)
 
-    # Converter a data
-    df["date"] = pd.to_datetime(df["date"], format="%Y-%m-%d")
-    df["doy"] = df["date"].dt.dayofyear
-
-    # Dia do ano para a janela
-    start_doy = compute_doy(start_month, start_day)
-    end_doy = compute_doy(end_month, end_day)
-
-    # Janela dentro do ano
-    if start_doy <= end_doy:
-        mask = (df["doy"] >= start_doy) & (df["doy"] <= end_doy)
-    else:
-        # Janela passa pelo fim do ano (ex.: Set–Mar)
-        mask = (df["doy"] >= start_doy) | (df["doy"] <= end_doy)
-
-    return df[mask].reset_index(drop=True)
-
-
-# -------------------------------------------------------------------------
-# 2. EVENTOS CLIMÁTICOS
-# -------------------------------------------------------------------------
-
-def detect_frost(df: pd.DataFrame, threshold: float = 0.0) -> pd.DataFrame:
-    """
-    Detecta dias com geada: tmin_C <= threshold (default 0°C)
-    """
-    frost_df = df[df["tmin_C"] <= threshold].copy()
-    frost_df["event"] = "frost"
-    return frost_df
-
-
-def detect_extreme_rain(df: pd.DataFrame, threshold_mm: float = 50.0) -> pd.DataFrame:
-    """
-    Detecta dias com precipitação extrema (>= threshold_mm).
-    """
-    rain_df = df[df["precip_mm"] >= threshold_mm].copy()
-    rain_df["event"] = "extreme_rain"
-    return rain_df
-
-
-def detect_extreme_wind(df: pd.DataFrame, threshold_ms: float = 20.0) -> pd.DataFrame:
-    """
-    Detecta dias com rajadas máximas diárias (gust_max_ms) >= threshold_ms.
-    """
-    wind_df = df[df["gust_max_ms"] >= threshold_ms].copy()
-    wind_df["event"] = "extreme_wind"
-    return wind_df
-
-
-def detect_persistent_rain(df: pd.DataFrame,
-                           threshold_mm: float = 5.0,
-                           min_consecutive_days: int = 3) -> pd.DataFrame:
-    """
-    Detecta episódios de chuva persistente:
-        - precip_mm >= threshold_mm
-        - durante pelo menos min_consecutive_days consecutivos
-    """
-
-    df = df.copy()
-    df["rain_flag"] = df["precip_mm"] >= threshold_mm
-
-    periods = []
-    start = None
-    streak = 0
-
-    for i in range(len(df)):
-        if df.loc[i, "rain_flag"]:
-            if start is None:
-                start = df.loc[i, "date"]
-            streak += 1
-        else:
-            if streak >= min_consecutive_days:
-                end = df.loc[i - 1, "date"]
-                periods.append({"start": start, "end": end, "days": streak})
-            start = None
-            streak = 0
-
-    # Se terminar com um período válido
-    if streak >= min_consecutive_days:
-        periods.append({
-            "start": start,
-            "end": df.loc[len(df) - 1, "date"],
-            "days": streak
-        })
-
-    return pd.DataFrame(periods)
-
-
-# -------------------------------------------------------------------------
-# 3. AGREGADOS ANUAIS E ESTATÍSTICAS
-# -------------------------------------------------------------------------
-
-def count_events_per_year(event_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Conta o número de ocorrências de um tipo de evento por ano.
-    """
-    if "date" not in event_df:
-        return pd.DataFrame()
-
-    out = event_df.copy()
-    out["year"] = pd.to_datetime(out["date"]).dt.year
-
-    return out.groupby("year").size().reset_index(name="count")
-
-
-def compute_annual_stats(df: pd.DataFrame,
-                         column: str,
-                         agg: str = "mean") -> pd.DataFrame:
-    """
-    Calcula estatísticas anuais para uma variável do CSV:
-    - mean, max, min, sum, median, etc.
-    """
-    if column not in df:
-        return pd.DataFrame()
-
-    out = df.copy()
-    out["year"] = pd.to_datetime(out["date"]).dt.year
-
-    return out.groupby("year")[column].agg(agg).reset_index()
-
-
-# -------------------------------------------------------------------------
-# 4. CARREGAMENTO DO CSV
-# -------------------------------------------------------------------------
-
-def load_era5_csv(path: str) -> pd.DataFrame:
-    """
-    Carrega um CSV gerado pela app/Google Earth Engine.
-    Verifica e corrige tipos automaticamente.
-    """
-
-    df = pd.read_csv(path)
-
-    # converter para datetime
+    # Converter data
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
-    # garantir que colunas numéricas são numéricas
+    # Converter colunas numéricas
     numeric_cols = [
-        "precip_mm", "tmin_C", "tmax_C", "tmean_C",
-        "dew2m_mean_C", "soilw1_mean",
-        "rad_Jm2_day", "rad_Wm2_mean",
-        "pev_mm_day", "wind_mean_ms", "gust_max_ms"
+        "precip_mm",
+        "tmin_C",
+        "tmax_C",
+        "tmean_C",
+        "dew2m_mean_C",
+        "soilw1_mean",
+        "rad_Jm2_day",
+        "rad_Wm2_mean",
+        "pev_mm_day",
+        "wind_mean_ms",
+        "gust_max_ms",
     ]
 
     for col in numeric_cols:
@@ -187,15 +54,223 @@ def load_era5_csv(path: str) -> pd.DataFrame:
     return df
 
 
+def streamlit_upload_and_load(st, label: str):
+    """
+    Pequeno helper para Streamlit:
+    - mostra um file_uploader
+    - quando o utilizador faz upload, lê o CSV com load_era5_csv
+    """
+    uploaded = st.file_uploader(label, type=["csv"])
+    if uploaded is None:
+        return None
+
+    try:
+        df = load_era5_csv(uploaded)
+        return df
+    except Exception as e:
+        st.error(f"Erro ao ler CSV: {e}")
+        return None
+
+
 # -------------------------------------------------------------------------
-# 5. AJUDA PARA ANÁLISES COMPLEXAS
+# 2. DETECÇÃO DE VARIÁVEIS & ESTATÍSTICAS
 # -------------------------------------------------------------------------
 
-def join_events(*dfs) -> pd.DataFrame:
+def detect_variable_columns(df: pd.DataFrame):
     """
-    Junta vários DataFrames de eventos distintos num só.
-    Útil para criar uma tabela consolidada (ex.: geada + chuva extrema).
+    Devolve a lista de colunas 'relevantes' (numéricas) para análise.
+    Exclui colunas óbvias de índice/geo.
     """
-    out = pd.concat(dfs, ignore_index=True)
-    out = out.sort_values("date").reset_index(drop=True)
-    return out
+    exclude = {"date", "system:index", ".geo"}
+    numeric_cols = []
+
+    for col in df.columns:
+        if col in exclude:
+            continue
+        if pd.api.types.is_numeric_dtype(df[col]):
+            numeric_cols.append(col)
+
+    return numeric_cols
+
+
+def summarize_daily_variables(df: pd.DataFrame, var_cols):
+    """
+    Faz um resumo estatístico tipo describe() para as variáveis diárias.
+    """
+    if not var_cols:
+        return pd.DataFrame()
+
+    summary = df[var_cols].describe().T
+    summary = summary.rename(
+        columns={
+            "count": "n",
+            "mean": "média",
+            "std": "desvio_padrao",
+            "min": "mín",
+            "25%": "p25",
+            "50%": "p50",
+            "75%": "p75",
+            "max": "máx",
+        }
+    )
+    return summary.reset_index().rename(columns={"index": "variável"})
+
+
+# -------------------------------------------------------------------------
+# 3. EVENTOS CLIMÁTICOS – MÁSCARAS
+# -------------------------------------------------------------------------
+
+def compute_event_masks(
+    df: pd.DataFrame,
+    frost_temp_C: float = 0.0,
+    frost_max_wind_ms: float = 3.0,
+    frost_max_dew_delta_C: float = 2.0,
+    rain_threshold_mm: float = 0.2,
+    heavy_rain_threshold_mm: float = 20.0,
+    heat_threshold_C: float = 35.0,
+    wind_gust_threshold_ms: float = 20.0,
+):
+    """
+    Constrói um dicionário de máscaras booleanas para diferentes eventos:
+
+      - 'frost'       : geada (tmin <= frost_temp, vento médio e |Tmin - dew| controlados)
+      - 'rain_day'    : dia chuvoso (precip >= rain_threshold)
+      - 'heavy_rain'  : chuva forte (precip >= heavy_rain_threshold)
+      - 'heat'        : calor extremo (tmax >= heat_threshold)
+      - 'strong_wind' : vento forte (gust_max >= wind_gust_threshold)
+
+    Só cria a máscara se as colunas necessárias existirem.
+    """
+
+    masks = {}
+
+    # Garantir que temos coluna 'date' em datetime
+    if "date" in df.columns and not pd.api.types.is_datetime64_any_dtype(df["date"]):
+        df = df.copy()
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+
+    # ------ Geada  --------------------------------------------------------
+    frost_cols = {"tmin_C", "dew2m_mean_C", "wind_mean_ms"}
+    if frost_cols.issubset(df.columns):
+        dew_delta = (df["tmin_C"] - df["dew2m_mean_C"]).abs()
+        mask_frost = (
+            (df["tmin_C"] <= frost_temp_C)
+            & (df["wind_mean_ms"] <= frost_max_wind_ms)
+            & (dew_delta <= frost_max_dew_delta_C)
+        )
+        masks["frost"] = mask_frost
+
+    # ------ Dia chuvoso ---------------------------------------------------
+    if "precip_mm" in df.columns:
+        masks["rain_day"] = df["precip_mm"] >= rain_threshold_mm
+        masks["heavy_rain"] = df["precip_mm"] >= heavy_rain_threshold_mm
+
+    # ------ Calor extremo -------------------------------------------------
+    if "tmax_C" in df.columns:
+        masks["heat"] = df["tmax_C"] >= heat_threshold_C
+
+    # ------ Vento forte ---------------------------------------------------
+    if "gust_max_ms" in df.columns:
+        masks["strong_wind"] = df["gust_max_ms"] >= wind_gust_threshold_ms
+
+    return masks
+
+
+# -------------------------------------------------------------------------
+# 4. FREQÜÊNCIA E “SEVERIDADE”
+# -------------------------------------------------------------------------
+
+def summarize_event_frequency_severity(df: pd.DataFrame, masks: dict) -> pd.DataFrame:
+    """
+    Para cada evento em `masks`, calcula:
+
+      - nº de dias com evento
+      - % de dias com evento
+      - uma métrica simples de severidade média (depende do tipo de evento)
+
+    Retorna DataFrame com colunas:
+      event_key, n_days, total_days, freq_pct, metric, severity_mean
+    """
+
+    total_days = len(df)
+    if total_days == 0 or not masks:
+        return pd.DataFrame()
+
+    rows = []
+
+    for key, mask in masks.items():
+        n = int(mask.sum())
+        if n == 0:
+            rows.append(
+                {
+                    "event_key": key,
+                    "n_days": 0,
+                    "total_days": total_days,
+                    "freq_pct": 0.0,
+                    "metric": None,
+                    "severity_mean": None,
+                }
+            )
+            continue
+
+        # Escolher uma métrica de severidade “natural” para cada evento
+        if key in ("rain_day", "heavy_rain"):
+            metric_col = "precip_mm"
+        elif key == "frost":
+            metric_col = "tmin_C"
+        elif key == "heat":
+            metric_col = "tmax_C"
+        elif key == "strong_wind":
+            metric_col = "gust_max_ms"
+        else:
+            metric_col = None
+
+        if metric_col is not None and metric_col in df.columns:
+            severity_mean = float(df.loc[mask, metric_col].mean())
+        else:
+            severity_mean = None
+
+        rows.append(
+            {
+                "event_key": key,
+                "n_days": n,
+                "total_days": total_days,
+                "freq_pct": 100.0 * n / total_days,
+                "metric": metric_col,
+                "severity_mean": severity_mean,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+# -------------------------------------------------------------------------
+# 5. CONTAGEM POR ANO
+# -------------------------------------------------------------------------
+
+def yearly_event_counts(df: pd.DataFrame, masks: dict) -> pd.DataFrame:
+    """
+    Constrói uma tabela (ano, event_key, dias_evento) para cada máscara.
+    """
+
+    if "date" not in df.columns:
+        return pd.DataFrame()
+
+    out_rows = []
+    dates = pd.to_datetime(df["date"], errors="coerce")
+    years = dates.dt.year
+
+    for key, mask in masks.items():
+        if mask is None:
+            continue
+        series = pd.Series(mask)
+        df_tmp = pd.DataFrame({"year": years, "mask": series})
+        grp = df_tmp[df_tmp["mask"]].groupby("year").size().reset_index(name="dias_evento")
+        grp["event_key"] = key
+        out_rows.append(grp)
+
+    if not out_rows:
+        return pd.DataFrame()
+
+    result = pd.concat(out_rows, ignore_index=True)
+    return result[["year", "event_key", "dias_evento"]]
