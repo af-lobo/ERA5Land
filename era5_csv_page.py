@@ -194,25 +194,41 @@ def show_era5_csv_page():
     # -------------------------------------------------
     st.subheader("Relatório PDF")
 
+    col_meta1, col_meta2 = st.columns(2)
+    with col_meta1:
+        location_name = st.text_input("Nome da localização", value="Local 1")
+        lat = st.number_input("Latitude", value=0.0, format="%.6f")
+        lon = st.number_input("Longitude", value=0.0, format="%.6f")
+    with col_meta2:
+        lang_label = st.selectbox(
+            "Idioma do relatório",
+            options=[("pt", "Português"), ("en", "English"), ("es", "Español")],
+            index=0,
+            format_func=lambda x: x[1],
+        )
+        lang_code = lang_label[0]
+
     if st.button("📄 Gerar relatório em PDF deste ficheiro"):
+        meta = {
+            "location_name": location_name,
+            "lat": lat,
+            "lon": lon,
+            "filename": getattr(df, "name", ""),
+        }
+
         pdf_bytes = generate_pdf_report(
             df_for_analysis,
+            seasonal_info,
             masks,
-            seasonal_info=seasonal_info,
-            event_params=dict(
-                frost_temp_C=frost_temp,
-                frost_max_wind_ms=frost_max_wind,
-                frost_max_dew_delta_C=frost_dew_delta,
-                rain_threshold_mm=rain_thresh,
-                heavy_rain_threshold_mm=heavy_rain_thresh,
-                heat_threshold_C=heat_thresh,
-                wind_gust_threshold_ms=wind_gust_thresh,
-            ),
+            freq_sev,
+            params_dict,
+            meta=meta,
+            lang=lang_code,
         )
 
         st.download_button(
             "⬇️ Descarregar relatório PDF",
             data=pdf_bytes,
-            file_name="relatorio_era5_diario.pdf",
+            file_name="analise_risco_climatico.pdf",
             mime="application/pdf",
         )
