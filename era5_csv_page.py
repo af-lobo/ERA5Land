@@ -8,94 +8,95 @@ from era5_daily_analysis import (
     compute_event_masks,
     summarize_event_frequency_severity,
     yearly_event_counts,
-    apply_seasonal_window,   # <- IMPORT DA JANELA SAZONAL
+    apply_seasonal_window,  # janela sazonal
 )
 
 from era5_report import generate_pdf_report
+
 
 def show_era5_csv_page():
     st.title("Análise ERA5 diária – CSV do Google Earth Engine")
 
     # -------------------------------------------------
-    # 1) Carregar ficheiro
+    # 1) Upload do CSV
     # -------------------------------------------------
-    df_raw = streamlit_upload_and_load(st, "Carrega ficheiro diário ERA5 do GEE")
+    df = streamlit_upload_and_load(st, "Carrega ficheiro diário ERA5 do GEE")
 
-    if df_raw is None:
+    if df is None:
         st.info("Carrega um ficheiro CSV exportado do GEE para começar.")
         return
 
-    st.subheader("Pré-visualização (dados originais)")
-    st.dataframe(df_raw.head())
+    st.subheader("Pré-visualização")
+    st.dataframe(df.head())
 
     # -------------------------------------------------
     # 2) Janela sazonal para ANÁLISE
-    # (o CSV pode ter ano completo, mas aqui filtras só o período de interesse)
     # -------------------------------------------------
-    st.subheader("Janela sazonal para análise")
+    st.markdown("## Janela sazonal para análise")
 
-    use_window = st.checkbox(
+    use_seasonal = st.checkbox(
         "Aplicar janela sazonal (mesmo que o CSV tenha o ano completo)",
         value=False,
     )
 
-    if use_window:
-        col1, col2 = st.columns(2)
+    df_for_analysis = df.copy()
+    seasonal_info = {"label": "Ano completo", "num_days": len(df_for_analysis)}
 
-        with col1:
-            st.markdown("**Início**")
-            start_month = st.number_input("Mês inicial", min_value=1, max_value=12, value=1, step=1)
-            start_day = st.number_input("Dia inicial", min_value=1, max_value=31, value=1, step=1)
+    if use_seasonal:
+        months = {
+            1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr",
+            5: "Mai", 6: "Jun", 7: "Jul", 8: "Ago",
+            9: "Set", 10: "Out", 11: "Nov", 12: "Dez",
+        }
 
-        with col2:
-            st.markdown("**Fim**")
-            end_month = st.number_input("Mês final", min_value=1, max_value=12, value=12, step=1)
-            end_day = st.number_input("Dia final", min_value=1, max_value=31, value=31, step=1)
+        c1, c2 = st.columns(2)
+        with c1:
+            start_month = st.selectbox(
+                "Mês início",
+                list(months.keys()),
+                format_func=lambda m: months[m],
+                index=0,
+            )
+            start_day = st.number_input("Dia início", min_value=1, max_value=31, value=1)
+        with c2:
+            end_month = st.selectbox(
+                "Mês fim",
+                list(months.keys()),
+                format_func=lambda m: months[m],
+                index=11,
+            )
+            end_day = st.number_input("Dia fim", min_value=1, max_value=31, value=31)
 
-        df = apply_seasonal_window(
-            df_raw,
+        df_for_analysis, seasonal_info = apply_seasonal_window(
+            df_for_analysis,
             start_month=int(start_month),
             start_day=int(start_day),
             end_month=int(end_month),
             end_day=int(end_day),
         )
 
-        st.caption(
-            f"Janela aplicada a todos os anos: "
-            f"{start_day:02d}/{start_month:02d} – {end_day:02d}/{end_month:02d} "
-            f"(dias após filtro: {len(df)} de {len(df_raw)})"
+        st.write(
+            f"Filtro sazonal aplicado: **{seasonal_info['label']}** "
+            f"(dias em análise: {seasonal_info['num_days']})"
         )
-
-        if df.empty:
-            st.warning(
-                "Após aplicar a janela sazonal não ficou nenhum dia. "
-                "Ajusta as datas ou desactiva a opção de janela sazonal."
-            )
-            return
     else:
-        df = df_raw.copy()
-        st.caption(f"Nenhum filtro sazonal aplicado (dias em análise: {len(df)})")
+        st.write(f"Nenhum filtro sazonal aplicado (dias em análise: {len(df_for_analysis)})")
 
     # -------------------------------------------------
-    # 3) Variáveis disponíveis
+    # 3) Variáveis disponíveis & resumo estatístico
     # -------------------------------------------------
-    var_cols = detect_variable_columns(df)
-    st.subheader("Variáveis disponíveis na série filtrada")
+    var_cols = detect_variable_columns(df_for_analysis)
+
+    st.subheader("Variáveis disponíveis")
     st.write(var_cols)
 
-    # -----------------------------------
-    # 4) Estatísticas básicas
-    # -----------------------------------
-    summary = summarize_daily_variables(df, var_cols)
+    summary = summarize_daily_variables(df_for_analysis, var_cols)
     st.subheader("Resumo estatístico")
-    if summary.empty:
-        st.info("Não foram encontradas variáveis numéricas conhecidas para resumir.")
-    else:
-        st.dataframe(summary)
+    st.dataframe(summary)
 
-    # -----------------------------------
-    # 5) Parâmetros dos eventos
-    # -----------------------------------
+    # -------------------------------------------------
+    # 4) Parâmetros dos eventos
+    # -------------------------------------------------
     with st.expander("Parâmetros dos eventos climáticos", expanded=True):
         st.markdown("### Geada")
         frost_temp = st.number_input("Temperatura máxima para geada (°C)", value=0.0, step=0.5)
@@ -115,11 +116,11 @@ def show_era5_csv_page():
         heat_thresh = st.number_input("Limite para calor extremo (Tmax ≥ °C)", value=35.0, step=1.0)
         wind_gust_thresh = st.number_input("Limite para vento forte (rajada ≥ m/s)", value=20.0, step=1.0)
 
-    # -----------------------------------
-    # 6) Cálculo dos eventos
-    # -----------------------------------
+    # -------------------------------------------------
+    # 5) Cálculo dos eventos
+    # -------------------------------------------------
     masks = compute_event_masks(
-        df,
+        df_for_analysis,
         frost_temp_C=frost_temp,
         frost_max_wind_ms=frost_max_wind,
         frost_max_dew_delta_C=frost_dew_delta,
@@ -133,17 +134,17 @@ def show_era5_csv_page():
         st.warning("Não foi possível calcular eventos (faltam algumas variáveis).")
         return
 
-    # -----------------------------------
-    # 7) Frequência e severidade
-    # -----------------------------------
-    freq_sev = summarize_event_frequency_severity(df, masks)
+    # -------------------------------------------------
+    # 6) Frequência e severidade
+    # -------------------------------------------------
+    freq_sev = summarize_event_frequency_severity(df_for_analysis, masks)
     st.subheader("Frequência e severidade dos eventos")
     st.dataframe(freq_sev)
 
-    # -----------------------------------
-    # 8) Ocorrências por ano (gráfico)
-    # -----------------------------------
-    yearly = yearly_event_counts(df, masks)
+    # -------------------------------------------------
+    # 7) Ocorrências por ano (gráfico)
+    # -------------------------------------------------
+    yearly = yearly_event_counts(df_for_analysis, masks)
 
     st.subheader("Número de dias de evento por ano")
 
@@ -154,10 +155,6 @@ def show_era5_csv_page():
         "heat": "Calor extremo",
         "strong_wind": "Vento forte",
     }
-
-    if yearly.empty:
-        st.info("Não há dados suficientes para o gráfico anual.")
-        return
 
     available_keys = sorted({e for e in yearly["event_key"].unique()})
 
@@ -182,49 +179,31 @@ def show_era5_csv_page():
 
     st.altair_chart(chart, use_container_width=True)
 
-# -----------------------------------------------------
-#  GERAR RELATÓRIO PDF
-# -----------------------------------------------------
-st.subheader("Gerar relatório PDF")
+    # -------------------------------------------------
+    # 8) Botão: Gerar relatório PDF
+    # -------------------------------------------------
+    st.subheader("Relatório em PDF")
 
-if st.button("📄 Gerar relatório PDF"):
-    
-    # --- Construir dicionário de parâmetros usados ---
-    event_params = {
-        "frost": {
-            "Temp máx. para geada (°C)": frost_temp,
-            "Vento médio máx. (m/s)": frost_max_wind,
-            "Δ(Tmin - Orvalho) máx. (°C)": frost_dew_delta,
-        },
-        "rain_day": {
-            "Limite para dia chuvoso (mm)": rain_thresh,
-        },
-        "heavy_rain": {
-            "Limite para chuva forte (mm)": heavy_rain_thresh,
-        },
-        "heat": {
-            "Limite para calor extremo (°C)": heat_thresh,
-        },
-        "strong_wind": {
-            "Limite para vento forte (m/s)": wind_gust_thresh,
-        },
+    params = {
+        "frost_temp_C": frost_temp,
+        "frost_max_wind_ms": frost_max_wind,
+        "frost_max_dew_delta_C": frost_dew_delta,
+        "rain_threshold_mm": rain_thresh,
+        "heavy_rain_threshold_mm": heavy_rain_thresh,
+        "heat_threshold_C": heat_thresh,
+        "wind_gust_threshold_ms": wind_gust_thresh,
     }
 
-    # --- Criar relatório PDF em memória ---
     pdf_bytes = generate_pdf_report(
-        df=df_seasonal,                    # dataframe já filtrado
-        masks=masks,                       # máscaras de eventos
-        event_params=event_params,         # parâmetros escolhidos
-        seasonal_info=seasonal_info,       # texto da janela sazonal
-        report_title=report_title,         # título do relatório
+        df_for_analysis,
+        masks,
+        params=params,
+        seasonal_info=seasonal_info,
     )
 
-    st.success("Relatório gerado com sucesso!")
-
-    # --- Botão para descarregar ---
     st.download_button(
-        label="⬇️ Descarregar relatório PDF",
+        label="📄 Gerar relatório PDF",
         data=pdf_bytes,
-        file_name=f"Relatorio_ERA5_{report_title}.pdf",
+        file_name="relatorio_era5_diario.pdf",
         mime="application/pdf",
     )
