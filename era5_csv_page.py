@@ -32,55 +32,51 @@ def show_era5_csv_page():
     # -------------------------------------------------
     # 2) Janela sazonal para ANÁLISE
     # -------------------------------------------------
-    st.markdown("## Janela sazonal para análise")
-
-    use_seasonal = st.checkbox(
-        "Aplicar janela sazonal (mesmo que o CSV tenha o ano completo)",
-        value=False,
-    )
-
+    
     df_for_analysis = df.copy()
-    seasonal_info = {"label": "Ano completo", "num_days": len(df_for_analysis)}
+    seasonal_info = {"active": False}
 
-    if use_seasonal:
-        months = {
-            1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr",
-            5: "Mai", 6: "Jun", 7: "Jul", 8: "Ago",
-            9: "Set", 10: "Out", 11: "Nov", 12: "Dez",
-        }
+    st.subheader("Janela sazonal para análise 🔁")
 
-        c1, c2 = st.columns(2)
-        with c1:
-            start_month = st.selectbox(
-                "Mês início",
-                list(months.keys()),
-                format_func=lambda m: months[m],
-                index=0,
-            )
+    if st.checkbox("Aplicar janela sazonal (mesmo que o CSV tenha o ano completo)"):
+        # meses em texto (para o utilizador) → número de mês (para a função)
+        month_labels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+                        "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+        month_to_int = {label: i + 1 for i, label in enumerate(month_labels)}
+
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            start_month_label = st.selectbox("Mês início", month_labels, index=0)
             start_day = st.number_input("Dia início", min_value=1, max_value=31, value=1)
-        with c2:
-            end_month = st.selectbox(
-                "Mês fim",
-                list(months.keys()),
-                format_func=lambda m: months[m],
-                index=11,
-            )
+        with col_s2:
+            end_month_label = st.selectbox("Mês fim", month_labels, index=11)
             end_day = st.number_input("Dia fim", min_value=1, max_value=31, value=31)
 
+        # Converter texto → inteiro
+        start_month = month_to_int[start_month_label]
+        end_month = month_to_int[end_month_label]
+
+        # Aplicar janela sazonal
         df_for_analysis, seasonal_info = apply_seasonal_window(
-            df_for_analysis,
+            df,
             start_month=int(start_month),
             start_day=int(start_day),
             end_month=int(end_month),
             end_day=int(end_day),
         )
 
-        st.write(
-            f"Filtro sazonal aplicado: **{seasonal_info['label']}** "
-            f"(dias em análise: {seasonal_info['num_days']})"
-        )
+        if seasonal_info.get("active"):
+            st.write(
+                f"Janela sazonal aplicada: "
+                f"{int(start_day):02d}-{start_month_label} até "
+                f"{int(end_day):02d}-{end_month_label} "
+                f"(dias em análise: {seasonal_info['n_days_after']})"
+            )
+        else:
+            st.write("Não foi possível aplicar janela sazonal (usar ano completo).")
     else:
         st.write(f"Nenhum filtro sazonal aplicado (dias em análise: {len(df_for_analysis)})")
+
 
     # -------------------------------------------------
     # 3) Variáveis disponíveis & resumo estatístico
