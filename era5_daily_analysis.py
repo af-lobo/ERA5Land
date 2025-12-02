@@ -74,36 +74,70 @@ def summarize_daily_variables(df: pd.DataFrame, var_cols: List[str]) -> pd.DataF
 # ---------------------------------------------------------
 def apply_seasonal_window(
     df: pd.DataFrame,
-    start_month: int = 1,
-    start_day: int = 1,
-    end_month: int = 12,
-    end_day: int = 31,
-) -> pd.DataFrame:
+    start_month: int,
+    start_day: int,
+    end_month: int,
+    end_day: int,
+):
     """
-    Filtra o DataFrame para uma janela sazonal (mês/dia) aplicada
-    a todos os anos. Se a janela passar pelo fim do ano (ex.: 15 Nov–15 Fev),
-    é tratada automaticamente.
+    Aplica uma janela sazonal a um DataFrame diário ERA5.
+
+    - df deve ter uma coluna 'date' no formato YYYY-MM-DD (string ou datetime).
+    - devolve (df_filtrado, info_dict)
     """
-    if "date" not in df.columns or not np.issubdtype(df["date"].dtype, np.datetime64):
-        # Se não houver coluna date em datetime, devolve o df original
-        return df
 
-    df = df.copy()
-    doy = df["date"].dt.dayofyear
+    if "date" not in df.columns:
+        raise ValueError("Coluna 'date' não encontrada no CSV.")
 
-    # construímos um ano de referência (2001) para calcular DOY de limites
-    start_ref = pd.Timestamp(year=2001, month=start_month, day=start_day)
-    end_ref = pd.Timestamp(year=2001, month=end_month, day=end_day)
-    start_doy = start_ref.dayofyear
-    end_doy = end_ref.dayofyear
+    # Cópia de trabalho
+    tmp = df.copy()
 
-    if start_doy <= end_doy:
+    # Converter para datetime de forma robusta
+    tmp["date"] = pd.to_datetime(tmp["date"], errors="coerce", format="mixed")
+
+    # Remover linhas sem data válida
+    tmp = tmp[tmp["date"].notna()].copy()
+
+    if tmp.empty:
+        info = {
+            "active": False,
+            "reason": "Sem datas válidas depois do parse.",
+            "n_days_before": len(df),
+            "n_days_after": 0,
+        }
+        return tmp, info
+
+    # Calcular day-of-year
+    doy = tmp["date"].dt.dayofyear
+
+    # Converter (mês, dia) em day-of-year numa base não-bissexta
+    try:
+        start_doy = _dt.date(2001, int(start_month), int(start_day)).timetuple().tm_yday
+        end_doy   = _dt.date(2001, int(end_month), int(end_day)).timetuple().tm_yday
+    except ValueError as e:
+        raise ValueError(f"Datas inválidas na janela sazonal: {e}") from e
+
+    wraps_year = start_doy > end_doy
+
+    if not wraps_year:
         mask = (doy >= start_doy) & (doy <= end_doy)
     else:
-        # janela que passa por 31/12
         mask = (doy >= start_doy) | (doy <= end_doy)
 
-    return df.loc[mask].copy()
+    filtered = tmp[mask].copy()
+
+    info = {
+        "active": True,
+        "start_month": int(start_month),
+        "start_day": int(start_day),
+        "end_month": int(end_month),
+        "end_day": int(end_day),
+        "wraps_year": bool(wraps_year),
+        "n_days_before": int(len(df)),
+        "n_days_after": int(len(filtered)),
+    }
+
+    return filtered, info
 
 
 # ---------------------------------------------------------
