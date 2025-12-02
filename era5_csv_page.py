@@ -11,6 +11,7 @@ from era5_daily_analysis import (
     apply_seasonal_window,   # <- IMPORT DA JANELA SAZONAL
 )
 
+from era5_report import generate_pdf_report
 
 def show_era5_csv_page():
     st.title("Análise ERA5 diária – CSV do Google Earth Engine")
