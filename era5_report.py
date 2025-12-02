@@ -92,144 +92,133 @@ def build_event_stats_for_report(
     return results
 
 
+def _fmt(val: Any) -> str:
+    """Formata números com 2 casas decimais; devolve '-' se None."""
+    if val is None:
+        return "-"
+    try:
+        return f"{float(val):.2f}"
+    except Exception:
+        return str(val)
+
+
 def generate_pdf_report(
     df: pd.DataFrame,
     masks: Dict[str, pd.Series],
-    event_params: Dict[str, Dict[str, Any]],
-    seasonal_info: str,
-    report_title: str = "Relatório ERA5 diário",
+    params: Dict[str, Any] | None = None,
+    seasonal_info: Dict[str, Any] | None = None,
 ) -> bytes:
     """
-    Gera um PDF em memória com o resumo dos eventos.
+    Gera um relatório PDF em memória a partir dos dados diários ERA5.
 
-    df           -> DataFrame já filtrado pela janela sazonal.
-    masks        -> dicionário {event_key: máscara booleana}.
-    event_params -> parâmetros usados em cada evento (limiares, etc.).
-    seasonal_info-> texto descritivo da janela sazonal.
+    df          -> DataFrame já filtrado (por ex. pela janela sazonal).
+    masks       -> dicionário de máscaras de eventos (frost, rain_day, etc.).
+    params      -> parâmetros usados para definir os eventos.
+    seasonal_info -> info opcional sobre a janela sazonal (label, nº de dias).
     """
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        leftMargin=2 * cm,
-        rightMargin=2 * cm,
-        topMargin=2 * cm,
-        bottomMargin=2 * cm,
-    )
-
-    styles = getSampleStyleSheet()
-    title_style = styles["Title"]
-    heading_style = styles["Heading2"]
-    normal = styles["Normal"]
-
-    elements = []
-
-    # ---- Cabeçalho ----
-    elements.append(Paragraph(report_title, title_style))
-    elements.append(Spacer(1, 0.4 * cm))
-
-    if "date" in df.columns and not df.empty:
-        start_date = str(df["date"].min())
-        end_date = str(df["date"].max())
-        elements.append(
-            Paragraph(
-                f"Período de dados: <b>{start_date}</b> a <b>{end_date}</b>",
-                normal,
-            )
-        )
-
-    elements.append(Paragraph(seasonal_info, normal))
-    elements.append(Spacer(1, 0.5 * cm))
-
-    total_days = len(df)
-    elements.append(
-        Paragraph(f"Número de dias em análise: <b>{total_days}</b>", normal)
-    )
-    elements.append(Spacer(1, 0.7 * cm))
-
-    # ---- Estatísticas por evento ----
+    # Calcula estatísticas por evento
     event_stats = build_event_stats_for_report(df, masks)
 
-    for key, stats in event_stats.items():
-        label = EVENT_LABELS.get(key, key)
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    styles = getSampleStyleSheet()
+    story: list = []
 
-        elements.append(Paragraph(label, heading_style))
-        elements.append(Spacer(1, 0.2 * cm))
+    # ------------------------------
+    # Cabeçalho
+    # ------------------------------
+    story.append(Paragraph("Relatório ERA5 diário", styles["Title"]))
+    story.append(Spacer(1, 0.4 * cm))
 
-        # Parâmetros usados
-        params = event_params.get(key, {})
-        if params:
-            param_rows = [["Parâmetro", "Valor"]]
-            for pname, pval in params.items():
-                param_rows.append([pname, str(pval)])
+    # Informação sobre janela sazonal
+    if seasonal_info:
+        label = seasonal_info.get("label", "")
+        num_days = seasonal_info.get("num_days", len(df))
+        txt = f"Janela sazonal em análise: <b>{label}</b> (nº de dias: {num_days})."
+    else:
+        txt = f"Número de dias considerados na análise: <b>{len(df)}</b>."
 
-            table = Table(param_rows, hAlign="LEFT")
-            table.setStyle(
-                TableStyle(
-                    [
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-                        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ]
-                )
-            )
-            elements.append(Paragraph("<b>Parâmetros utilizados:</b>", normal))
-            elements.append(table)
-            elements.append(Spacer(1, 0.2 * cm))
+    story.append(Paragraph(txt, styles["Normal"]))
+    story.append(Spacer(1, 0.3 * cm))
 
-        # Indicadores principais
-        days = stats.get("days", 0)
-        prob = stats.get("prob_pct", np.nan)
+    # ------------------------------
+    # Parâmetros utilizados
+    # ------------------------------
+    if params:
+        story.append(Paragraph("Parâmetros usados na detecção de eventos:", styles["Heading2"]))
+        data = [["Evento / Parâmetro", "Valor"]]
+        for key, value in params.items():
+            data.append([str(key), str(value)])
 
-        rows = [
-            ["Indicador", "Valor"],
-            ["Dias com evento", f"{days}"],
-            ["Probabilidade na janela", f"{prob:.2f} %"],
-        ]
-
-        # Helper interno para acrescentar linhas de estatísticas
-        def add_var_stats(name_key: str, label_txt: str):
-            v = stats.get(name_key)
-            if not v or v["min"] is None:
-                return
-            rows.append(
-                [
-                    f"{label_txt} (mín / média / máx)",
-                    f"{v['min']:.2f} / {v['mean']:.2f} / {v['max']:.2f}",
-                ]
-            )
-
-        add_var_stats("precip_mm", "Precipitação diária (mm)")
-        add_var_stats("tmin_C", "Temperatura mínima (°C)")
-        add_var_stats("tmax_C", "Temperatura máxima (°C)")
-        add_var_stats("tmean_C", "Temperatura média (°C)")
-        add_var_stats("wind_mean_ms", "Vento médio (m/s)")
-        add_var_stats("gust_max_ms", "Rajada máxima (m/s)")
-
-        stats_table = Table(rows, hAlign="LEFT")
-        stats_table.setStyle(
+        tbl = Table(data, hAlign="LEFT")
+        tbl.setStyle(
             TableStyle(
                 [
                     ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
                     ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
                 ]
             )
         )
+        story.append(tbl)
+        story.append(Spacer(1, 0.5 * cm))
 
-        elements.append(Paragraph("<b>Resumo estatístico:</b>", normal))
-        elements.append(stats_table)
-        elements.append(Spacer(1, 0.7 * cm))
-
+    # ------------------------------
+    # Estatísticas por evento
+    # ------------------------------
     if not event_stats:
-        elements.append(
-            Paragraph(
-                "Não foram identificados eventos com os critérios definidos.",
-                normal,
-            )
-        )
+        story.append(Paragraph("Não foram identificados eventos com os parâmetros definidos.", styles["Normal"]))
+    else:
+        for event_key, stats in event_stats.items():
+            label = EVENT_LABELS.get(event_key, event_key)
 
-    doc.build(elements)
+            story.append(Paragraph(label, styles["Heading2"]))
+            story.append(Spacer(1, 0.1 * cm))
+
+            days = stats.get("days", 0)
+            prob = stats.get("prob_pct", 0.0)
+            txt = f"Número de dias com evento: <b>{days}</b> ({prob:.1f}% dos dias na janela)."
+            story.append(Paragraph(txt, styles["Normal"]))
+            story.append(Spacer(1, 0.1 * cm))
+
+            # Tabela com min / max / média das variáveis relevantes
+            var_rows = []
+            for var_name, label_var in [
+                ("precip_mm", "Precipitação diária (mm)"),
+                ("tmin_C", "Temperatura mínima (°C)"),
+                ("tmax_C", "Temperatura máxima (°C)"),
+                ("tmean_C", "Temperatura média (°C)"),
+                ("dew2m_mean_C", "Ponto de orvalho médio (°C)"),
+                ("wind_mean_ms", "Vento médio (m/s)"),
+                ("gust_max_ms", "Rajada máxima (m/s)"),
+            ]:
+                if var_name in stats:
+                    s = stats[var_name]
+                    var_rows.append(
+                        [
+                            label_var,
+                            _fmt(s["min"]),
+                            _fmt(s["max"]),
+                            _fmt(s["mean"]),
+                        ]
+                    )
+
+            if var_rows:
+                data = [["Variável", "Mínimo", "Máximo", "Média"]] + var_rows
+                tbl = Table(data, hAlign="LEFT")
+                tbl.setStyle(
+                    TableStyle(
+                        [
+                            ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                            ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                            ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+                        ]
+                    )
+                )
+                story.append(tbl)
+                story.append(Spacer(1, 0.4 * cm))
+
+    # Constrói o PDF
+    doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
