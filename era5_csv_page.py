@@ -181,3 +181,50 @@ def show_era5_csv_page():
     )
 
     st.altair_chart(chart, use_container_width=True)
+
+# -----------------------------------------------------
+#  GERAR RELATÓRIO PDF
+# -----------------------------------------------------
+st.subheader("Gerar relatório PDF")
+
+if st.button("📄 Gerar relatório PDF"):
+    
+    # --- Construir dicionário de parâmetros usados ---
+    event_params = {
+        "frost": {
+            "Temp máx. para geada (°C)": frost_temp,
+            "Vento médio máx. (m/s)": frost_max_wind,
+            "Δ(Tmin - Orvalho) máx. (°C)": frost_dew_delta,
+        },
+        "rain_day": {
+            "Limite para dia chuvoso (mm)": rain_thresh,
+        },
+        "heavy_rain": {
+            "Limite para chuva forte (mm)": heavy_rain_thresh,
+        },
+        "heat": {
+            "Limite para calor extremo (°C)": heat_thresh,
+        },
+        "strong_wind": {
+            "Limite para vento forte (m/s)": wind_gust_thresh,
+        },
+    }
+
+    # --- Criar relatório PDF em memória ---
+    pdf_bytes = generate_pdf_report(
+        df=df_seasonal,                    # dataframe já filtrado
+        masks=masks,                       # máscaras de eventos
+        event_params=event_params,         # parâmetros escolhidos
+        seasonal_info=seasonal_info,       # texto da janela sazonal
+        report_title=report_title,         # título do relatório
+    )
+
+    st.success("Relatório gerado com sucesso!")
+
+    # --- Botão para descarregar ---
+    st.download_button(
+        label="⬇️ Descarregar relatório PDF",
+        data=pdf_bytes,
+        file_name=f"Relatorio_ERA5_{report_title}.pdf",
+        mime="application/pdf",
+    )
