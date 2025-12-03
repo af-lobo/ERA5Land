@@ -172,7 +172,7 @@ def build_event_stats_for_report(
 def generate_pdf_report(
     df: pd.DataFrame,
     masks: Dict[str, pd.Series],
-    freq_sev: pd.DataFrame,
+    freq_sev: pd.DataFrame,          # continua no interface, mas já não usamos
     params: Dict[str, float],
     seasonal_info: Dict[str, Any] | None = None,
     lang: str = "pt",
@@ -201,13 +201,13 @@ def generate_pdf_report(
     styles = getSampleStyleSheet()
     story = []
 
-    # -----------------------------------------------------
-    # 1. Cabeçalho / meta-informação
-    # -----------------------------------------------------
     title_style = styles["Title"]
     normal = styles["Normal"]
     heading = styles["Heading2"]
 
+    # -----------------------------------------------------
+    # 1. Cabeçalho / meta-informação
+    # -----------------------------------------------------
     story.append(Paragraph(labels["title"], title_style))
     story.append(Spacer(1, 0.5 * cm))
 
@@ -245,13 +245,18 @@ def generate_pdf_report(
     story.append(Spacer(1, 0.5 * cm))
 
     # -----------------------------------------------------
-    # 2. Tabela resumo de frequência/severidade
+    # 2. Estatísticas por evento (inclui dias & prob)
+    # -----------------------------------------------------
+    # Calculamos logo aqui para reutilizar tanto na tabela-resumo
+    # como nas secções detalhadas.
+    all_event_keys = ["frost", "rain_day", "heavy_rain", "heat", "strong_wind"]
+    event_stats = build_event_stats_for_report(df, masks)
+
+    # -----------------------------------------------------
+    # 3. Tabela resumo de frequência/severidade
     # -----------------------------------------------------
     story.append(Paragraph(labels["events_summary"], heading))
     story.append(Spacer(1, 0.2 * cm))
-
-    # Queremos garantir que todos os eventos apareçam, mesmo sem ocorrências
-    all_event_keys = ["frost", "rain_day", "heavy_rain", "heat", "strong_wind"]
 
     table_data = [
         [
@@ -263,13 +268,14 @@ def generate_pdf_report(
 
     for key in all_event_keys:
         label = labels.get(key, key)
-        row = freq_sev[freq_sev["event_key"] == key]
-        if row.empty:
+        stats = event_stats.get(key)
+
+        if not stats:
             days = 0
             prob = 0.0
         else:
-            days = int(row["dias_evento"].iloc[0])
-            prob = float(row["probabilidade_%"].iloc[0])
+            days = int(stats.get("days", 0))
+            prob = float(stats.get("prob_pct", 0.0))
 
         table_data.append(
             [
@@ -295,10 +301,8 @@ def generate_pdf_report(
     story.append(Spacer(1, 0.7 * cm))
 
     # -----------------------------------------------------
-    # 3. Secções por evento (parâmetros + estatísticas)
+    # 4. Secções por evento (parâmetros + estatísticas)
     # -----------------------------------------------------
-    event_stats = build_event_stats_for_report(df, masks)
-
     param_labels = {
         "frost": [
             ("frost_temp", "Tmax geada (°C)"),
@@ -346,7 +350,6 @@ def generate_pdf_report(
 
         story.append(Paragraph(labels["stats"], styles["Heading3"]))
 
-        # Tabela simples com algumas variáveis
         rows = [
             ["", "min", "média", "max"],
         ]
@@ -387,7 +390,7 @@ def generate_pdf_report(
         story.append(Spacer(1, 0.7 * cm))
 
     # -----------------------------------------------------
-    # 4. Build & return bytes
+    # 5. Build & return bytes
     # -----------------------------------------------------
     doc.build(story)
     pdf_bytes = buffer.getvalue()
