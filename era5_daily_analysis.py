@@ -57,17 +57,30 @@ def detect_variable_columns(df: pd.DataFrame) -> List[str]:
 # ---------------------------------------------------------
 # 3. Resumo estatístico diário
 # ---------------------------------------------------------
-def summarize_daily_variables(df: pd.DataFrame, var_cols: List[str]) -> pd.DataFrame:
+def summarize_daily_variables(df: pd.DataFrame, var_cols) -> pd.DataFrame:
     """
-    Produz estatísticas resumo (count, mean, std, min, quartis, max)
-    para as colunas de variáveis.
+    Faz um describe() das variáveis disponíveis para análise.
+
+    - Ignora colunas que não existam no DataFrame.
+    - Se o DataFrame estiver vazio (por ex. janela sazonal sem dias),
+      devolve um DataFrame vazio em vez de rebentar.
     """
-    if not var_cols:
+    import pandas as pd
+
+    # Se não há dados, devolve vazio
+    if df is None or df.empty:
         return pd.DataFrame()
 
-    summary = df[var_cols].describe().T
-    summary = summary.rename(columns={"50%": "median"})
-    return summary
+    # Garante que só usamos colunas que realmente existem no df
+    cols = [c for c in var_cols if c in df.columns]
+
+    if not cols:
+        # Nenhuma das colunas detectadas existe neste df (já filtrado)
+        return pd.DataFrame()
+
+    summary = df[cols].describe().T
+    return summary.round(2)
+
 
 
 # ---------------------------------------------------------
