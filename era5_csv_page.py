@@ -76,14 +76,21 @@ def show_era5_csv_page():
             end_month = end_month_label[1]
             end_day = st.number_input("Dia fim", min_value=1, max_value=31, value=31)
 
-        try:
-            df_for_analysis = apply_seasonal_window(
+                try:
+            # Pode devolver DataFrame OU (DataFrame, info)
+            tmp = apply_seasonal_window(
                 df,
                 start_month=int(start_month),
                 start_day=int(start_day),
                 end_month=int(end_month),
                 end_day=int(end_day),
             )
+
+            # Compatível com ambas as versões:
+            if isinstance(tmp, tuple):
+                df_for_analysis, _info = tmp
+            else:
+                df_for_analysis = tmp
 
             seasonal_info = {
                 "start_month": int(start_month),
@@ -97,6 +104,7 @@ def show_era5_csv_page():
                 f" – {end_day:02d}/{end_month:02d}."
                 f" Dias em análise: {len(df_for_analysis)}"
             )
+
         except Exception:
             st.error(
                 "Erro ao aplicar janela sazonal. "
