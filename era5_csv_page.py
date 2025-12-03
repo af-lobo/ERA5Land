@@ -8,7 +8,7 @@ from era5_daily_analysis import (
     compute_event_masks,
     summarize_event_frequency_severity,
     yearly_event_counts,
-    apply_seasonal_window,      # <-- importante
+    apply_seasonal_window,   # janela sazonal
 )
 
 from era5_report import generate_pdf_report
@@ -18,7 +18,7 @@ def show_era5_csv_page():
     st.title("Análise ERA5 diária – CSV do Google Earth Engine")
 
     # -------------------------------------------------
-    # 1. Carregar CSV
+    # 1. Upload e leitura do ficheiro
     # -------------------------------------------------
     df = streamlit_upload_and_load(st, "Carrega ficheiro diário ERA5 do GEE")
 
@@ -29,37 +29,55 @@ def show_era5_csv_page():
     st.subheader("Pré-visualização")
     st.dataframe(df.head())
 
-    # Vamos trabalhar sempre numa cópia que pode ser filtrada sazonalmente
-    df_for_analysis = df.copy()
+    # -------------------------------------------------
+    # 2. Variáveis disponíveis
+    # -------------------------------------------------
+    var_cols = detect_variable_columns(df)
+    st.subheader("Variáveis disponíveis")
+    st.write(var_cols)
 
     # -------------------------------------------------
-    # 2. Janela sazonal
+    # 3. Janela sazonal para ANÁLISE
     # -------------------------------------------------
-    st.subheader("Janela sazonal para análise 🔁")
+    st.markdown("## Janela sazonal para análise")
 
-    seasonal_info = {"active": False}
     use_seasonal = st.checkbox(
-        "Aplicar janela sazonal (mesmo que o CSV tenha o ano completo)"
+        "Aplicar janela sazonal (mesmo que o CSV tenha o ano completo)",
+        value=False,
     )
 
-    if use_seasonal:
-        month_labels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-                        "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
-        month_to_int = {label: i + 1 for i, label in enumerate(month_labels)}
+    df_for_analysis = df.copy()
+    seasonal_info = None
 
-        col_s1, col_s2 = st.columns(2)
-        with col_s1:
-            start_month_label = st.selectbox("Mês início", month_labels, index=0)
+    if use_seasonal:
+        month_options = [
+            ("Jan", 1), ("Fev", 2), ("Mar", 3), ("Abr", 4),
+            ("Mai", 5), ("Jun", 6), ("Jul", 7), ("Ago", 8),
+            ("Set", 9), ("Out", 10), ("Nov", 11), ("Dez", 12),
+        ]
+
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            start_month_label = st.selectbox(
+                "Mês início",
+                options=month_options,
+                index=0,
+                format_func=lambda x: x[0],
+            )
+            start_month = start_month_label[1]
             start_day = st.number_input("Dia início", min_value=1, max_value=31, value=1)
-        with col_s2:
-            end_month_label = st.selectbox("Mês fim", month_labels, index=11)
+        with col_m2:
+            end_month_label = st.selectbox(
+                "Mês fim",
+                options=month_options,
+                index=11,
+                format_func=lambda x: x[0],
+            )
+            end_month = end_month_label[1]
             end_day = st.number_input("Dia fim", min_value=1, max_value=31, value=31)
 
-        start_month = month_to_int[start_month_label]
-        end_month = month_to_int[end_month_label]
-
         try:
-            df_for_analysis, seasonal_info = apply_seasonal_window(
+            df_for_analysis = apply_seasonal_window(
                 df,
                 start_month=int(start_month),
                 start_day=int(start_day),
@@ -67,43 +85,36 @@ def show_era5_csv_page():
                 end_day=int(end_day),
             )
 
-            if seasonal_info.get("active"):
-                st.write(
-                    "Janela sazonal aplicada: "
-                    + f"{start_day}-{start_month_label} até "
-                    + f"{end_day}-{end_month_label} "
-                    + f"(dias em análise: {seasonal_info.get('n_days_after', 'NA')})"
-                )
-            else:
-                st.write(
-                    "Não foi possível aplicar janela sazonal; a análise será feita com o ano completo."
-                )
-        except ValueError as e:
-            # Qualquer problema com datas / parsing cai aqui
+            seasonal_info = {
+                "start_month": int(start_month),
+                "start_day": int(start_day),
+                "end_month": int(end_month),
+                "end_day": int(end_day),
+            }
+
+            st.success(
+                f"Janela sazonal aplicada: {start_day:02d}/{start_month:02d}"
+                f" – {end_day:02d}/{end_month:02d}."
+                f" Dias em análise: {len(df_for_analysis)}"
+            )
+        except Exception:
             st.error(
                 "Erro ao aplicar janela sazonal. "
                 "Verifica se a coluna 'date' do CSV está no formato YYYY-MM-DD."
             )
-            st.text(str(e))
-            df_for_analysis = df.copy()
-            seasonal_info = {"active": False}
-
+            return
     else:
-        st.write(f"Nenhum filtro sazonal aplicado (dias em análise: {len(df_for_analysis)})")
+        st.caption(f"Nenhum filtro sazonal aplicado (dias em análise: {len(df_for_analysis)})")
 
     # -------------------------------------------------
-    # 3. Variáveis e resumo estatístico
+    # 4. Estatísticas básicas
     # -------------------------------------------------
-    var_cols = detect_variable_columns(df_for_analysis)
-    st.subheader("Variáveis disponíveis")
-    st.write(var_cols)
-
     summary = summarize_daily_variables(df_for_analysis, var_cols)
     st.subheader("Resumo estatístico")
     st.dataframe(summary)
 
     # -------------------------------------------------
-    # 4. Parâmetros dos eventos
+    # 5. Parâmetros dos eventos
     # -------------------------------------------------
     with st.expander("Parâmetros dos eventos climáticos", expanded=True):
         st.markdown("### Geada")
@@ -125,7 +136,7 @@ def show_era5_csv_page():
         wind_gust_thresh = st.number_input("Limite para vento forte (rajada ≥ m/s)", value=20.0, step=1.0)
 
     # -------------------------------------------------
-    # 5. Cálculo dos eventos (usando df_for_analysis!)
+    # 6. Cálculo dos eventos
     # -------------------------------------------------
     masks = compute_event_masks(
         df_for_analysis,
@@ -143,19 +154,16 @@ def show_era5_csv_page():
         return
 
     # -------------------------------------------------
-    # 6. Frequência e severidade
+    # 7. Frequência e severidade
     # -------------------------------------------------
-    from era5_report import build_event_stats_for_report  # opcional, se quiseres alinhar tudo
-
     freq_sev = summarize_event_frequency_severity(df_for_analysis, masks)
     st.subheader("Frequência e severidade dos eventos")
     st.dataframe(freq_sev)
 
     # -------------------------------------------------
-    # 7. Ocorrências por ano (gráfico)
+    # 8. Ocorrências por ano (gráfico)
     # -------------------------------------------------
     yearly = yearly_event_counts(df_for_analysis, masks)
-
     st.subheader("Número de dias de evento por ano")
 
     event_labels = {
@@ -168,29 +176,32 @@ def show_era5_csv_page():
 
     available_keys = sorted({e for e in yearly["event_key"].unique()})
 
-    key = st.selectbox(
-        "Escolhe o tipo de evento para visualizar",
-        options=available_keys,
-        format_func=lambda k: event_labels.get(k, k),
-    )
-
-    yearly_sel = yearly[yearly["event_key"] == key]
-
-    chart = (
-        alt.Chart(yearly_sel)
-        .mark_bar()
-        .encode(
-            x=alt.X("year:O", title="Ano"),
-            y=alt.Y("dias_evento:Q", title="Nº de dias com evento"),
-            tooltip=["year", "dias_evento"],
+    if available_keys:
+        key = st.selectbox(
+            "Escolhe o tipo de evento para visualizar",
+            options=available_keys,
+            format_func=lambda k: event_labels.get(k, k),
         )
-        .properties(height=300)
-    )
 
-    st.altair_chart(chart, use_container_width=True)
+        yearly_sel = yearly[yearly["event_key"] == key]
+
+        chart = (
+            alt.Chart(yearly_sel)
+            .mark_bar()
+            .encode(
+                x=alt.X("year:O", title="Ano"),
+                y=alt.Y("dias_evento:Q", title="Nº de dias com evento"),
+                tooltip=["year", "dias_evento"],
+            )
+            .properties(height=300)
+        )
+
+        st.altair_chart(chart, use_container_width=True)
+    else:
+        st.info("Nenhum evento encontrado para o período/variáveis seleccionados.")
 
     # -------------------------------------------------
-    # 8. Botão de relatório PDF
+    # 9. Relatório PDF
     # -------------------------------------------------
     st.subheader("Relatório PDF")
 
@@ -199,17 +210,17 @@ def show_era5_csv_page():
         location_name = st.text_input("Nome da localização", value="Local 1")
         lat = st.number_input("Latitude", value=0.0, format="%.6f")
         lon = st.number_input("Longitude", value=0.0, format="%.6f")
+
     with col_meta2:
-        lang_label = st.selectbox(
+        lang_choice = st.selectbox(
             "Idioma do relatório",
             options=[("pt", "Português"), ("en", "English"), ("es", "Español")],
             index=0,
             format_func=lambda x: x[1],
         )
-        lang_code = lang_label[0]
+        lang_code = lang_choice[0]
 
     if st.button("📄 Gerar relatório em PDF deste ficheiro"):
-        # dicionário de parâmetros a passar para o relatório
         params_for_report = {
             "frost_temp_C": frost_temp,
             "frost_max_wind_ms": frost_max_wind,
@@ -222,17 +233,17 @@ def show_era5_csv_page():
 
         meta = {
             "location_name": location_name,
-            "lat": lat,
-            "lon": lon,
+            "lat": float(lat),
+            "lon": float(lon),
             "filename": getattr(df, "name", ""),
         }
 
         pdf_bytes = generate_pdf_report(
-            df_for_analysis,      # df já com janela sazonal aplicada
+            df_for_analysis,
             seasonal_info,
             masks,
             freq_sev,
-            params_for_report,    # <-- aqui em vez de params_dict
+            params_for_report,
             meta=meta,
             lang=lang_code,
         )
