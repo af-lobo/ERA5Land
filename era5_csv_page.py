@@ -209,6 +209,17 @@ def show_era5_csv_page():
         lang_code = lang_label[0]
 
     if st.button("📄 Gerar relatório em PDF deste ficheiro"):
+        # dicionário de parâmetros a passar para o relatório
+        params_for_report = {
+            "frost_temp_C": frost_temp,
+            "frost_max_wind_ms": frost_max_wind,
+            "frost_max_dew_delta_C": frost_dew_delta,
+            "rain_threshold_mm": rain_thresh,
+            "heavy_rain_threshold_mm": heavy_rain_thresh,
+            "heat_threshold_C": heat_thresh,
+            "wind_gust_threshold_ms": wind_gust_thresh,
+        }
+
         meta = {
             "location_name": location_name,
             "lat": lat,
@@ -217,11 +228,11 @@ def show_era5_csv_page():
         }
 
         pdf_bytes = generate_pdf_report(
-            df_for_analysis,
+            df_for_analysis,      # df já com janela sazonal aplicada
             seasonal_info,
             masks,
             freq_sev,
-            params_dict,
+            params_for_report,    # <-- aqui em vez de params_dict
             meta=meta,
             lang=lang_code,
         )
