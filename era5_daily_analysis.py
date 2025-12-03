@@ -65,8 +65,6 @@ def summarize_daily_variables(df: pd.DataFrame, var_cols) -> pd.DataFrame:
     - Se o DataFrame estiver vazio (por ex. janela sazonal sem dias),
       devolve um DataFrame vazio em vez de rebentar.
     """
-    import pandas as pd
-
     # Se não há dados, devolve vazio
     if df is None or df.empty:
         return pd.DataFrame()
