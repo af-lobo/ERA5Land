@@ -1,6 +1,6 @@
 # era5_report.py
 #
-# Funções para gerar relatório PDF a partir dos dados diários ERA5.
+# Geração de relatório PDF a partir dos dados diários ERA5.
 
 from __future__ import annotations
 
@@ -23,81 +23,85 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 
 
+# ----------------------------------------------------------------------
+# Labels por idioma
+# ----------------------------------------------------------------------
+
 EVENT_LABELS: Dict[str, Dict[str, str]] = {
     "pt": {
         "title": "Análise de Risco Climático",
         "location": "Localização",
-        "coords": "Coordenadas",
-        "period": "Período analisado",
-        "seasonal_window": "Janela sazonal aplicada",
-        "events_summary": "Resumo de frequência e severidade dos eventos",
-        "days": "N.º de dias",
-        "prob": "Probabilidade",
-        "params": "Parâmetros utilizados",
-        "stats": "Estatísticas principais",
-        "no_data": "Sem ocorrências neste período.",
+        "coords": "Coordenadas (lat, lon)",
+        "period": "Período do ficheiro",
+        "seasonal_window": "Janela sazonal de análise",
+        "events_summary": "Resumo de frequência de eventos",
+        "days": "Nº dias com evento",
+        "prob": "Probabilidade no período",
+        "params": "Parâmetros usados",
+        "stats": "Estatísticas das variáveis (dias com evento)",
+        "no_data": "Nenhum dia com este tipo de evento no período analisado.",
+        "precip": "Precipitação (mm/dia)",
+        "tmin": "Temperatura mínima (°C)",
+        "tmax": "Temperatura máxima (°C)",
+        "tmean": "Temperatura média (°C)",
+        "dew": "Ponto de orvalho 2 m (°C)",
+        "wind": "Vento médio (m/s)",
+        "gust": "Rajada máxima (m/s)",
         "frost": "Geada",
         "rain_day": "Dia chuvoso",
         "heavy_rain": "Chuva forte",
         "heat": "Calor extremo",
         "strong_wind": "Vento forte",
-        "precip": "Precipitação (mm/dia)",
-        "tmin": "Tmin (°C)",
-        "tmax": "Tmax (°C)",
-        "tmean": "Tmean (°C)",
-        "dew": "Ponto de orvalho (°C)",
-        "wind": "Vento médio (m/s)",
-        "gust": "Rajada máx. (m/s)",
     },
     "en": {
         "title": "Climate Risk Analysis",
         "location": "Location",
-        "coords": "Coordinates",
-        "period": "Analysed period",
-        "seasonal_window": "Applied seasonal window",
-        "events_summary": "Summary of event frequency and severity",
-        "days": "No. of days",
-        "prob": "Probability",
+        "coords": "Coordinates (lat, lon)",
+        "period": "File period",
+        "seasonal_window": "Seasonal window for analysis",
+        "events_summary": "Event frequency summary",
+        "days": "Number of event days",
+        "prob": "Probability in the period",
         "params": "Parameters used",
-        "stats": "Key statistics",
-        "no_data": "No occurrences in this period.",
+        "stats": "Variable statistics (event days only)",
+        "no_data": "No days with this type of event in the analysed period.",
+        "precip": "Precipitation (mm/day)",
+        "tmin": "Minimum temperature (°C)",
+        "tmax": "Maximum temperature (°C)",
+        "tmean": "Mean temperature (°C)",
+        "dew": "Dew point 2 m (°C)",
+        "wind": "Mean wind (m/s)",
+        "gust": "Max gust (m/s)",
         "frost": "Frost",
         "rain_day": "Rainy day",
         "heavy_rain": "Heavy rain",
-        "heat": "Heatwave",
+        "heat": "Heat stress",
         "strong_wind": "Strong wind",
-        "precip": "Precipitation (mm/day)",
-        "tmin": "Tmin (°C)",
-        "tmax": "Tmax (°C)",
-        "tmean": "Tmean (°C)",
-        "dew": "Dew point (°C)",
-        "wind": "Mean wind (m/s)",
-        "gust": "Max gust (m/s)",
     },
     "es": {
         "title": "Análisis de Riesgo Climático",
         "location": "Localización",
-        "coords": "Coordenadas",
-        "period": "Período analizado",
-        "seasonal_window": "Ventana estacional aplicada",
-        "events_summary": "Resumen de frecuencia y severidad de eventos",
-        "days": "N.º de días",
-        "prob": "Probabilidad",
+        "coords": "Coordenadas (lat, lon)",
+        "period": "Periodo del fichero",
+        "seasonal_window": "Ventana estacional de análisis",
+        "events_summary": "Resumen de frecuencia de eventos",
+        "days": "Nº de días con evento",
+        "prob": "Probabilidad en el periodo",
         "params": "Parámetros utilizados",
-        "stats": "Estadísticas principales",
-        "no_data": "Sin ocurrencias en este período.",
+        "stats": "Estadísticas de las variables (solo días con evento)",
+        "no_data": "No hay días con este tipo de evento en el periodo analizado.",
+        "precip": "Precipitación (mm/día)",
+        "tmin": "Temperatura mínima (°C)",
+        "tmax": "Temperatura máxima (°C)",
+        "tmean": "Temperatura media (°C)",
+        "dew": "Punto de rocío 2 m (°C)",
+        "wind": "Viento medio (m/s)",
+        "gust": "Racha máxima (m/s)",
         "frost": "Helada",
         "rain_day": "Día lluvioso",
         "heavy_rain": "Lluvia intensa",
         "heat": "Calor extremo",
         "strong_wind": "Viento fuerte",
-        "precip": "Precipitación (mm/día)",
-        "tmin": "Tmin (°C)",
-        "tmax": "Tmax (°C)",
-        "tmean": "Tmean (°C)",
-        "dew": "Punto de rocío (°C)",
-        "wind": "Viento medio (m/s)",
-        "gust": "Ráfaga máx. (m/s)",
     },
 }
 
@@ -128,27 +132,18 @@ def build_event_stats_for_report(
         return results
 
     for key, mask in masks.items():
-        if mask is None:
+        if mask is None or mask.sum() == 0:
             continue
 
-        # Garante que a máscara alinha com o DataFrame
-        series_mask = pd.Series(mask, index=df.index)
-        if series_mask.sum() == 0:
-            # queremos mesmo assim registar "zero dias" – o caller trata disso
-            days = 0
-            prob = 0.0
-            sub = df.iloc[[]].copy()
-        else:
-            sub = df[series_mask].copy()
-            days = len(sub)
-            prob = 100.0 * days / total_days
+        sub = df[mask].copy()
+        days = len(sub)
+        prob = 100.0 * days / total_days
 
         stats: Dict[str, Any] = {
             "days": int(days),
             "prob_pct": float(prob),
         }
 
-        # Só calcula se as colunas existirem
         if "precip_mm" in sub.columns:
             stats["precip_mm"] = _safe_stats(sub["precip_mm"])
         if "tmin_C" in sub.columns:
@@ -169,10 +164,15 @@ def build_event_stats_for_report(
     return results
 
 
+# ----------------------------------------------------------------------
+# Gerar PDF
+# ----------------------------------------------------------------------
+
+
 def generate_pdf_report(
     df: pd.DataFrame,
     masks: Dict[str, pd.Series],
-    freq_sev: pd.DataFrame,          # continua no interface, mas já não usamos
+    freq_sev: pd.DataFrame,          # mantido na assinatura, mas não é usado
     params: Dict[str, float],
     seasonal_info: Dict[str, Any] | None = None,
     lang: str = "pt",
@@ -182,10 +182,10 @@ def generate_pdf_report(
 ) -> bytes:
     """
     Gera um PDF em memória com o sumário de risco climático.
-
     Retorna os bytes do PDF (para download no Streamlit).
     """
-    # Escolher dicionário de labels pelo idioma
+
+    # Escolher labels
     labels = EVENT_LABELS.get(lang, EVENT_LABELS["pt"])
 
     buffer = io.BytesIO()
@@ -205,71 +205,65 @@ def generate_pdf_report(
     normal = styles["Normal"]
     heading = styles["Heading2"]
 
-    # -----------------------------------------------------
-    # 1. Cabeçalho / meta-informação
-    # -----------------------------------------------------
+    # --------------------------------------------------
+    # 1. Cabeçalho
+    # --------------------------------------------------
     story.append(Paragraph(labels["title"], title_style))
     story.append(Spacer(1, 0.5 * cm))
 
-    # Localização e coordenadas
-    loc_text = f"{labels['location']}: {location_name}"
-    story.append(Paragraph(loc_text, normal))
-
+    # Localização + coords
+    story.append(Paragraph(f"{labels['location']}: {location_name}", normal))
     if lat is not None and lon is not None:
-        coords_text = f"{labels['coords']}: {lat:.4f}, {lon:.4f}"
-        story.append(Paragraph(coords_text, normal))
+        story.append(
+            Paragraph(
+                f"{labels['coords']}: {lat:.4f}, {lon:.4f}",
+                normal,
+            )
+        )
 
-    # Período
+    # Período do ficheiro
     if "date" in df.columns:
         try:
             dmin = pd.to_datetime(df["date"]).min().date()
             dmax = pd.to_datetime(df["date"]).max().date()
-            period_text = f"{labels['period']}: {dmin} – {dmax}"
-            story.append(Paragraph(period_text, normal))
+            story.append(
+                Paragraph(f"{labels['period']}: {dmin} – {dmax}", normal)
+            )
         except Exception:
             pass
 
-    # Janela sazonal (se existir)
+    # Janela sazonal
     if seasonal_info is not None:
         sm = seasonal_info.get("start_month")
         sd = seasonal_info.get("start_day")
         em = seasonal_info.get("end_month")
         ed = seasonal_info.get("end_day")
         if sm and sd and em and ed:
-            win_text = (
-                f"{labels['seasonal_window']}: "
-                f"{sd:02d}/{sm:02d} – {ed:02d}/{em:02d}"
+            story.append(
+                Paragraph(
+                    f"{labels['seasonal_window']}: {sd:02d}/{sm:02d} – {ed:02d}/{em:02d}",
+                    normal,
+                )
             )
-            story.append(Paragraph(win_text, normal))
 
-    story.append(Spacer(1, 0.5 * cm))
+    story.append(Spacer(1, 0.7 * cm))
 
-    # -----------------------------------------------------
-    # 2. Estatísticas por evento (inclui dias & prob)
-    # -----------------------------------------------------
-    # Calculamos logo aqui para reutilizar tanto na tabela-resumo
-    # como nas secções detalhadas.
+    # --------------------------------------------------
+    # 2. Estatísticas globais por evento
+    # --------------------------------------------------
     all_event_keys = ["frost", "rain_day", "heavy_rain", "heat", "strong_wind"]
     event_stats = build_event_stats_for_report(df, masks)
 
-    # -----------------------------------------------------
-    # 3. Tabela resumo de frequência/severidade
-    # -----------------------------------------------------
     story.append(Paragraph(labels["events_summary"], heading))
     story.append(Spacer(1, 0.2 * cm))
 
     table_data = [
-        [
-            "Evento",
-            labels["days"],
-            labels["prob"],
-        ]
+        ["Evento", labels["days"], labels["prob"]],
     ]
 
     for key in all_event_keys:
         label = labels.get(key, key)
         stats = event_stats.get(key)
-
         if not stats:
             days = 0
             prob = 0.0
@@ -285,8 +279,8 @@ def generate_pdf_report(
             ]
         )
 
-    table = Table(table_data, hAlign="LEFT")
-    table.setStyle(
+    summary_table = Table(table_data, hAlign="LEFT")
+    summary_table.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
@@ -297,12 +291,12 @@ def generate_pdf_report(
             ]
         )
     )
-    story.append(table)
+    story.append(summary_table)
     story.append(Spacer(1, 0.7 * cm))
 
-    # -----------------------------------------------------
-    # 4. Secções por evento (parâmetros + estatísticas)
-    # -----------------------------------------------------
+    # --------------------------------------------------
+    # 3. Secções por evento
+    # --------------------------------------------------
     param_labels = {
         "frost": [
             ("frost_temp", "Tmax geada (°C)"),
@@ -316,7 +310,7 @@ def generate_pdf_report(
             ("heavy_rain_thresh", "Chuva forte ≥ (mm)"),
         ],
         "heat": [
-            ("heat_thresh", "Calor extremo Tmin ≥ (°C)"),
+            ("heat_thresh", "Calor extremo Tmax ≥ (°C)"),
         ],
         "strong_wind": [
             ("wind_gust_thresh", "Rajada forte ≥ (m/s)"),
@@ -341,18 +335,16 @@ def generate_pdf_report(
 
         story.append(Spacer(1, 0.2 * cm))
 
-        # Estatísticas do evento
+        # Estatísticas
         stats = event_stats.get(key)
         if not stats:
             story.append(Paragraph(labels["no_data"], normal))
-            story.append(Spacer(1, 0.5 * cm))
+            story.append(Spacer(1, 0.7 * cm))
             continue
 
         story.append(Paragraph(labels["stats"], styles["Heading3"]))
 
-        rows = [
-            ["", "min", "média", "max"],
-        ]
+        rows = [["", "min", "média", "max"]]
 
         def add_row(label_key: str, stat_key: str):
             if stat_key not in stats:
@@ -385,13 +377,12 @@ def generate_pdf_report(
                 ]
             )
         )
-
         story.append(stats_table)
         story.append(Spacer(1, 0.7 * cm))
 
-    # -----------------------------------------------------
-    # 5. Build & return bytes
-    # -----------------------------------------------------
+    # --------------------------------------------------
+    # 4. Build
+    # --------------------------------------------------
     doc.build(story)
     pdf_bytes = buffer.getvalue()
     buffer.close()
