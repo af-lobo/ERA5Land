@@ -36,83 +36,96 @@ def show_era5_csv_page():
     st.subheader("Variáveis disponíveis")
     st.write(var_cols)
 
-    # -------------------------------------------------
-    # 3. Janela sazonal para ANÁLISE
-    # -------------------------------------------------
-    st.markdown("## Janela sazonal para análise")
+    # ---------------------------------------------------------
+# 3. Janela sazonal para análise
+# ---------------------------------------------------------
+st.header("Janela sazonal para análise")
 
-    use_seasonal = st.checkbox(
-        "Aplicar janela sazonal (mesmo que o CSV tenha o ano completo)",
-        value=False,
+use_seasonal = st.checkbox(
+    "Aplicar janela sazonal (mesmo que o CSV tenha o ano completo)",
+    value=False,
+)
+
+# meses para o selectbox (label -> número do mês)
+MONTH_LABELS = [
+    ("Jan", 1),
+    ("Fev", 2),
+    ("Mar", 3),
+    ("Abr", 4),
+    ("Mai", 5),
+    ("Jun", 6),
+    ("Jul", 7),
+    ("Ago", 8),
+    ("Set", 9),
+    ("Out", 10),
+    ("Nov", 11),
+    ("Dez", 12),
+]
+
+df_for_analysis = df.copy()
+seasonal_info = None  # <-- importante inicializar
+
+if use_seasonal:
+    st.markdown("Seleciona a janela sazonal (aplicada a todos os anos).")
+
+    col_sm, col_em = st.columns(2)
+    with col_sm:
+        start_month_label = st.selectbox(
+            "Mês início",
+            options=MONTH_LABELS,
+            format_func=lambda x: x[0],
+            index=0,
+        )
+    with col_em:
+        end_month_label = st.selectbox(
+            "Mês fim",
+            options=MONTH_LABELS,
+            format_func=lambda x: x[0],
+            index=11,
+        )
+
+    start_month = start_month_label[1]
+    end_month = end_month_label[1]
+
+    col_sd, col_ed = st.columns(2)
+    with col_sd:
+        start_day = st.number_input("Dia início", min_value=1, max_value=31, value=1)
+    with col_ed:
+        end_day = st.number_input("Dia fim", min_value=1, max_value=31, value=31)
+
+    try:
+        df_for_analysis = apply_seasonal_window(
+            df,
+            start_month=int(start_month),
+            start_day=int(start_day),
+            end_month=int(end_month),
+            end_day=int(end_day),
+        )
+
+        seasonal_info = {
+            "start_month": int(start_month),
+            "start_day": int(start_day),
+            "end_month": int(end_month),
+            "end_day": int(end_day),
+        }
+
+        st.success(
+            f"Janela sazonal aplicada: {start_day:02d}/{start_month:02d} "
+            f"- {end_day:02d}/{end_month:02d}. "
+            f"Dias em análise: {len(df_for_analysis)}"
+        )
+
+    except Exception:
+        st.error(
+            "Erro ao aplicar janela sazonal.\n\n"
+            "Verifica se a coluna 'date' do CSV está no formato YYYY-MM-DD."
+        )
+        return  # pára a função se algo correu mal
+
+else:
+    st.caption(
+        f"Nenhum filtro sazonal aplicado (dias em análise: {len(df_for_analysis)})"
     )
-
-    df_for_analysis = df.copy()
-    seasonal_info = None
-
-    if use_seasonal:
-        month_options = [
-            ("Jan", 1), ("Fev", 2), ("Mar", 3), ("Abr", 4),
-            ("Mai", 5), ("Jun", 6), ("Jul", 7), ("Ago", 8),
-            ("Set", 9), ("Out", 10), ("Nov", 11), ("Dez", 12),
-        ]
-
-        col_m1, col_m2 = st.columns(2)
-        with col_m1:
-            start_month_label = st.selectbox(
-                "Mês início",
-                options=month_options,
-                index=0,
-                format_func=lambda x: x[0],
-            )
-            start_month = start_month_label[1]
-            start_day = st.number_input("Dia início", min_value=1, max_value=31, value=1)
-        with col_m2:
-            end_month_label = st.selectbox(
-                "Mês fim",
-                options=month_options,
-                index=11,
-                format_func=lambda x: x[0],
-            )
-            end_month = end_month_label[1]
-            end_day = st.number_input("Dia fim", min_value=1, max_value=31, value=31)
-
-                try:
-            # Pode devolver DataFrame OU (DataFrame, info)
-            tmp = apply_seasonal_window(
-                df,
-                start_month=int(start_month),
-                start_day=int(start_day),
-                end_month=int(end_month),
-                end_day=int(end_day),
-            )
-
-            # Compatível com ambas as versões:
-            if isinstance(tmp, tuple):
-                df_for_analysis, _info = tmp
-            else:
-                df_for_analysis = tmp
-
-            seasonal_info = {
-                "start_month": int(start_month),
-                "start_day": int(start_day),
-                "end_month": int(end_month),
-                "end_day": int(end_day),
-            }
-
-            st.success(
-                f"Janela sazonal aplicada: {start_day:02d}/{start_month:02d}"
-                f" – {end_day:02d}/{end_month:02d}."
-                f" Dias em análise: {len(df_for_analysis)}"
-            )
-
-        except Exception:
-            st.error(
-                "Erro ao aplicar janela sazonal. "
-                "Verifica se a coluna 'date' do CSV está no formato YYYY-MM-DD."
-            )
-            return
-    else:
-        st.caption(f"Nenhum filtro sazonal aplicado (dias em análise: {len(df_for_analysis)})")
 
     # -------------------------------------------------
     # 4. Estatísticas básicas
