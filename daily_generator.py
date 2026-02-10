@@ -78,7 +78,7 @@ def build_gee_code_daily(
     if not locations:
         return (
             "// ERRO: nenhuma localização válida encontrada.\n"
-            "// Formato esperado (uma por linha): Nome, lon, lat\n"
+            "// Formato esperado (uma por linha): Nome, lon, lat\n (Exemplo: Lisboa,-9.14,38.70)"
             "// Exemplo: Futrono, -72.4, -40.15"
         )
 
