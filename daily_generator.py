@@ -27,7 +27,6 @@ def _parse_locations(locations_text: str) -> List[Dict[str, float]]:
         Nome, lon, lat
     Exemplo:
         Futrono, -72.4, -40.15
-        Lisboa,-9.14,38.70
     """
     locations: List[Dict[str, float]] = []
 
