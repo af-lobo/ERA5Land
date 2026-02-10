@@ -278,7 +278,7 @@ vento médio a 10 m e rajada máxima diária.
     
     # --- Localizações ---
     locations_text = st.text_area(
-        "Localizações (uma por linha, formato: nome,lon,lat)",
+        "Localizações (uma por linha, formato: nome,lon,lat) - Exemplo: Lisboa,-9.14,38.70",
         value="Futrono,-72.4 ,-40.15",
         height=150,
     )
