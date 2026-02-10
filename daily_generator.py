@@ -27,6 +27,7 @@ def _parse_locations(locations_text: str) -> List[Dict[str, float]]:
         Nome, lon, lat
     Exemplo:
         Futrono, -72.4, -40.15
+        Lisboa,-9.14,38.70
     """
     locations: List[Dict[str, float]] = []
 
@@ -78,7 +79,7 @@ def build_gee_code_daily(
     if not locations:
         return (
             "// ERRO: nenhuma localização válida encontrada.\n"
-            "// Formato esperado (uma por linha): Nome, lon, lat\n (Exemplo: Lisboa,-9.14,38.70)"
+            "// Formato esperado (uma por linha): Nome, lon, lat\n"
             "// Exemplo: Futrono, -72.4, -40.15"
         )
 
