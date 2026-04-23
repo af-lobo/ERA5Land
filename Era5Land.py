@@ -7,9 +7,49 @@ from daily_generator import build_gee_code_daily
 from era5_csv_page import show_era5_csv_page
 
 
-# ---------------------------
-# Layout principal da app
-# ---------------------------
+VARIABLES_META = {
+    "total_precipitation_hourly": {
+        "label": "Precipitação horária",
+        "help": "Precipitação total horária. Exportada em mm."
+    },
+    "temperature_2m": {
+        "label": "Temperatura a 2 m",
+        "help": "Temperatura do ar a 2 metros acima da superfície. No modo diário gera Tmin, Tmax e Tmean."
+    },
+    "dewpoint_temperature_2m": {
+        "label": "Ponto de orvalho a 2 m",
+        "help": "Temperatura à qual o ar atinge saturação, a 2 metros."
+    },
+    "volumetric_soil_water_layer_1": {
+        "label": "Humidade do solo camada 1",
+        "help": "Conteúdo volumétrico de água na camada superficial do solo (0–7 cm)."
+    },
+    "surface_solar_radiation_downwards_hourly": {
+        "label": "Radiação solar horária",
+        "help": "Radiação solar descendente à superfície no intervalo horário. No modo diário gera soma diária e média em W/m²."
+    },
+    "potential_evaporation_hourly": {
+        "label": "Evapotranspiração potencial horária",
+        "help": "Evapotranspiração potencial no intervalo horário. No modo diário gera total diário."
+    },
+    "runoff_hourly": {
+        "label": "Runoff horário",
+        "help": "Escoamento no intervalo horário. No modo diário gera total diário."
+    },
+    "u_component_of_wind_10m": {
+        "label": "Vento 10 m - componente U",
+        "help": "Componente zonal do vento a 10 metros."
+    },
+    "v_component_of_wind_10m": {
+        "label": "Vento 10 m - componente V",
+        "help": "Componente meridional do vento a 10 metros."
+    },
+    "instantaneous_10m_wind_gust": {
+        "label": "Rajada máxima a 10 m",
+        "help": "Rajada instantânea máxima do vento a 10 metros. No modo diário gera a rajada máxima do dia."
+    },
+}
+
 
 st.set_page_config(
     page_title="Gerador de Código GEE – ERA5-Land",
@@ -22,13 +62,10 @@ page = st.sidebar.radio(
 )
 
 
-# ---------------------------
-# Página: Gerar código
-# ---------------------------
 if page == "Gerar código GEE":
     st.title("Gerador de Código")
     st.caption(
-        "Define a janela sazonal, o intervalo de anos, o modo de exportação "
+        "Define a janela sazonal, o intervalo de anos, a timezone, as variáveis "
         "e obtém o código JavaScript para o Google Earth Engine."
     )
 
@@ -52,11 +89,7 @@ if page == "Gerar código GEE":
         "Modo de exportação",
         ["daily", "hourly", "both"],
         horizontal=True,
-        help=(
-            "daily = exporta série diária; "
-            "hourly = exporta série horária; "
-            "both = exporta ambas."
-        ),
+        help="daily = série diária; hourly = série horária; both = ambas."
     )
 
     timezone_options = ["UTC"] + sorted(tz for tz in available_timezones() if tz != "UTC")
@@ -67,20 +100,46 @@ if page == "Gerar código GEE":
         options=timezone_options,
         index=timezone_options.index(default_tz),
         help=(
-            "Usa formato IANA. Podes pesquisar na lista. "
-            "A timezone escolhida será aplicada a todas as localizações deste pedido."
+            "Podes pesquisar na lista. Esta timezone será aplicada a todas as "
+            "localizações inseridas neste pedido."
         ),
     )
 
+    st.markdown("#### Variáveis a exportar")
+
+    select_all_variables = st.checkbox(
+        "Selecionar todas as variáveis",
+        value=True,
+        help="Se ativa, todas as variáveis ficam selecionadas por defeito."
+    )
+
+    selected_variables = []
+    cols = st.columns(2)
+    items = list(VARIABLES_META.items())
+
+    for i, (var_name, meta) in enumerate(items):
+        with cols[i % 2]:
+            checked = st.checkbox(
+                meta["label"],
+                value=select_all_variables,
+                help=meta["help"],
+                key=f"var_{var_name}"
+            )
+            if checked:
+                selected_variables.append(var_name)
+
+    if not selected_variables:
+        st.warning("Seleciona pelo menos uma variável.")
+
     st.markdown(
         """
-O gerador pode exportar:
+No formato das localizações, usa uma linha por centróide:
 
-- **daily**: série diária com precipitação diária, temperatura mínima/máxima/média,
-  ponto de orvalho médio, humidade do solo, radiação, evapotranspiração,
-  vento médio e rajada máxima.
-- **hourly**: série horária de precipitação com data/hora UTC e local.
-- **both**: gera os dois ficheiros.
+`Nome,lon,lat`
+
+Exemplo:
+
+`Dagoberto,-71.42160751,-35.71990245`
 """
     )
 
@@ -94,6 +153,8 @@ O gerador pode exportar:
     if st.button("Gerar código para o GEE"):
         if start_year > end_year:
             st.error("O ano inicial deve ser menor ou igual ao ano final.")
+        elif not selected_variables:
+            st.error("Seleciona pelo menos uma variável.")
         else:
             gee_code = build_gee_code_daily(
                 start_year=int(start_year),
@@ -105,6 +166,7 @@ O gerador pode exportar:
                 locations_text=locations_text,
                 export_mode=export_mode,
                 timezone_str=timezone_str,
+                selected_variables=selected_variables,
             )
 
             st.subheader("Código JavaScript para colar no GEE")
@@ -117,16 +179,8 @@ O gerador pode exportar:
                 mime="text/javascript",
             )
 
-
-# ---------------------------
-# Página: Análise CSV ERA5
-# ---------------------------
 elif page == "Análise CSV ERA5":
     show_era5_csv_page()
 
-
-# ---------------------------
-# Página: Instruções
-# ---------------------------
 elif page == "Instruções":
     show_instructions()
